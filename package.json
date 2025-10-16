@@ -40,7 +40,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "npm run build:types && vite build",
+    "build": "npm run build:types && vite build && npm run build:types",
     "build:types": "vue-tsc --build tsconfig.build.json",
     "preview": "vite preview",
     "type-check": "vue-tsc --build",
