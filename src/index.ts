@@ -7,11 +7,11 @@ export { ChatInput, ChatList }
 
 // Export types
 export type { IChatInput } from './interfaces/chatinput.interface'
-export type { IMessage } from './interfaces/message.interface'
+export type { IMessage, IMessageShow, IAttachment } from './interfaces/message.interface'
 
 // Export enums
 export { ChatInputType } from './enums/chatinput.enum'
-export { MessageType as MessageTypeEnum } from './enums/message.enum'
+export { MessageStatusEnum } from './enums/message.enum'
 
 // Install function for Vue app
 export const install = (app: App) => {
@@ -20,8 +20,10 @@ export const install = (app: App) => {
 }
 
 // Default export
-export default {
+const Vue3ChatUIKit = {
   install,
   ChatInput,
   ChatList,
 }
+
+export default Vue3ChatUIKit
