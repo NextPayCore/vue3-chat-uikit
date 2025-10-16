@@ -1,0 +1,32 @@
+# Source files
+src/
+!src/index.ts
+
+# Development files
+.vscode/
+.vite/
+node_modules/
+*.log
+*.tsbuildinfo
+
+# Config files
+vite.config.ts
+tsconfig*.json
+eslint.config.*
+.prettierrc.json
+.editorconfig
+.gitignore
+.gitattributes
+
+# Test files
+**/*.spec.ts
+**/*.test.ts
+**/__tests__/
+
+# Development dependencies
+package-lock.json
+
+# Other
+.env*
+.DS_Store
+Thumbs.db
