@@ -94,6 +94,80 @@
       </div>
     </div>
 
+    <!-- Markdown toolbar -->
+    <div class="markdown-toolbar">
+      <div class="toolbar-buttons">
+        <button
+          @click="insertMarkdown('bold')"
+          class="md-btn"
+          title="Bold (Ctrl/Cmd + B)"
+          type="button"
+        >
+          <strong>B</strong>
+        </button>
+        <button
+          @click="insertMarkdown('italic')"
+          class="md-btn"
+          title="Italic (Ctrl/Cmd + I)"
+          type="button"
+        >
+          <em>I</em>
+        </button>
+        <button
+          @click="insertMarkdown('code')"
+          class="md-btn"
+          title="Inline Code"
+          type="button"
+        >
+          &lt;/&gt;
+        </button>
+        <button
+          @click="insertMarkdown('codeblock')"
+          class="md-btn"
+          title="Code Block"
+          type="button"
+        >
+          { }
+        </button>
+        <button
+          @click="insertMarkdown('link')"
+          class="md-btn"
+          title="Link"
+          type="button"
+        >
+          🔗
+        </button>
+        <button
+          @click="insertMarkdown('list')"
+          class="md-btn"
+          title="List"
+          type="button"
+        >
+          ≡
+        </button>
+        <button
+          @click="insertMarkdown('quote')"
+          class="md-btn"
+          title="Quote"
+          type="button"
+        >
+          "
+        </button>
+      </div>
+      <span class="markdown-hint">Markdown supported</span>
+      <el-button
+        size="small"
+        text
+        class="preview-toggle"
+        @click="togglePreview"
+        :title="isPreviewMode ? 'Edit Mode' : 'Preview Mode'"
+      >
+        <el-icon v-if="isPreviewMode"><Edit /></el-icon>
+        <el-icon v-else><View /></el-icon>
+        <span>{{ isPreviewMode ? 'Edit' : 'Preview' }}</span>
+      </el-button>
+    </div>
+
     <div class="input-wrapper">
       <!-- File input (hidden) -->
       <input
@@ -106,6 +180,7 @@
       />
 
       <el-input
+        v-show="!isPreviewMode"
         ref="inputRef"
         v-model="message"
         type="textarea"
@@ -117,6 +192,16 @@
         :disabled="disabled"
         resize="none"
       />
+
+      <!-- Markdown Preview Area -->
+      <div
+        v-show="isPreviewMode"
+        class="markdown-preview"
+        :class="{ 'empty': !message.trim() }"
+      >
+        <div v-if="message.trim()" class="preview-content" v-html="markdownPreview"></div>
+        <div v-else class="preview-placeholder">{{ placeholder }}</div>
+      </div>
 
       <div class="input-actions">
         <!-- File upload button -->
@@ -171,7 +256,29 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
 import { ElInput, ElButton, ElIcon } from 'element-plus'
-import { ArrowRight, Paperclip, Close, Document, Microphone, VideoPause } from '@element-plus/icons-vue'
+import { ArrowRight, Paperclip, Close, Document, Microphone, VideoPause, View, Edit } from '@element-plus/icons-vue'
+import MarkdownIt from 'markdown-it'
+import hljs from 'highlight.js'
+
+// Initialize markdown parser
+const md: MarkdownIt = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
+  breaks: true,
+  highlight: function (str: string, lang: string): string {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return '<pre class="hljs"><code class="language-' + lang + '">' +
+               hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
+               '</code></pre>'
+      } catch (__) {
+        // Ignore errors
+      }
+    }
+    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>'
+  }
+})
 
 interface UploadedFile {
   id: string
@@ -227,6 +334,7 @@ const message = ref('')
 const uploadedFiles = ref<UploadedFile[]>([])
 const inputRef = ref<InstanceType<typeof ElInput>>()
 const fileInputRef = ref<HTMLInputElement>()
+const isPreviewMode = ref(false)
 
 // Voice recording states
 const isRecording = ref(false)
@@ -243,6 +351,15 @@ const canSend = computed(() => {
     currentVoiceRecording.value !== null
   ) && !props.disabled && !isRecording.value
 })
+
+const markdownPreview = computed(() => {
+  if (!message.value.trim()) return ''
+  return md.render(message.value)
+})
+
+const togglePreview = () => {
+  isPreviewMode.value = !isPreviewMode.value
+}
 
 const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Enter' && !event.shiftKey) {
@@ -398,6 +515,61 @@ const cancelReply = () => {
   emit('cancelReply')
 }
 
+const insertMarkdown = (type: string) => {
+  const textarea = inputRef.value?.textarea
+  if (!textarea) return
+
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  const selectedText = message.value.substring(start, end)
+  const beforeText = message.value.substring(0, start)
+  const afterText = message.value.substring(end)
+
+  let newText = ''
+  let cursorOffset = 0
+
+  switch (type) {
+    case 'bold':
+      newText = `**${selectedText || 'bold text'}**`
+      cursorOffset = selectedText ? newText.length : 2
+      break
+    case 'italic':
+      newText = `*${selectedText || 'italic text'}*`
+      cursorOffset = selectedText ? newText.length : 1
+      break
+    case 'code':
+      newText = `\`${selectedText || 'code'}\``
+      cursorOffset = selectedText ? newText.length : 1
+      break
+    case 'codeblock':
+      newText = `\`\`\`\n${selectedText || 'code block'}\n\`\`\``
+      cursorOffset = selectedText ? newText.length : 4
+      break
+    case 'link':
+      newText = `[${selectedText || 'link text'}](url)`
+      cursorOffset = selectedText ? newText.length - 4 : 1
+      break
+    case 'list':
+      newText = `- ${selectedText || 'list item'}`
+      cursorOffset = selectedText ? newText.length : 2
+      break
+    case 'quote':
+      newText = `> ${selectedText || 'quote'}`
+      cursorOffset = selectedText ? newText.length : 2
+      break
+    default:
+      return
+  }
+
+  message.value = beforeText + newText + afterText
+
+  nextTick(() => {
+    const newPosition = start + cursorOffset
+    textarea.focus()
+    textarea.setSelectionRange(newPosition, newPosition)
+  })
+}
+
 const sendMessage = () => {
   if (!canSend.value) return
 
@@ -429,6 +601,9 @@ defineExpose({
 </script>
 
 <style scoped>
+/* Import highlight.js theme for code blocks */
+@import 'highlight.js/styles/github-dark.css';
+
 .chat-input-container {
   flex-shrink: 0;
   width: 100%;
@@ -438,6 +613,248 @@ defineExpose({
   background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,1) 100%);
   backdrop-filter: blur(10px);
   border-top: 1px solid rgba(0,0,0,0.06);
+}
+
+.markdown-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.toolbar-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.md-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.md-btn:hover {
+  background: #f3f4f6;
+  border-color: #10a37f;
+  color: #10a37f;
+  transform: translateY(-1px);
+}
+
+.md-btn:active {
+  transform: translateY(0);
+}
+
+.md-btn strong,
+.md-btn em {
+  font-size: 14px;
+}
+
+.markdown-hint {
+  font-size: 11px;
+  color: #9ca3af;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+}
+
+.preview-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.preview-toggle:hover {
+  color: #10a37f;
+  background: rgba(16, 163, 127, 0.05);
+  border-color: rgba(16, 163, 127, 0.2);
+}
+
+.preview-toggle .el-icon {
+  font-size: 14px;
+}
+
+.markdown-preview {
+  min-height: 40px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 12px 16px;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 15px;
+  line-height: 1.6;
+  transition: all 0.2s ease;
+}
+
+.markdown-preview:hover {
+  border-color: #10a37f;
+}
+
+.markdown-preview.empty {
+  border-style: dashed;
+  border-color: #d1d5db;
+}
+
+.preview-placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.preview-content {
+  word-wrap: break-word;
+}
+
+/* Markdown styling for preview */
+.preview-content :deep(h1),
+.preview-content :deep(h2),
+.preview-content :deep(h3),
+.preview-content :deep(h4),
+.preview-content :deep(h5),
+.preview-content :deep(h6) {
+  margin-top: 12px;
+  margin-bottom: 6px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #1f2937;
+}
+
+.preview-content :deep(h1) { font-size: 20px; }
+.preview-content :deep(h2) { font-size: 18px; }
+.preview-content :deep(h3) { font-size: 16px; }
+.preview-content :deep(h4) { font-size: 15px; }
+
+.preview-content :deep(p) {
+  margin: 6px 0;
+}
+
+.preview-content :deep(strong) {
+  font-weight: 600;
+}
+
+.preview-content :deep(em) {
+  font-style: italic;
+}
+
+.preview-content :deep(a) {
+  color: #10a37f;
+  text-decoration: underline;
+}
+
+.preview-content :deep(code:not(.hljs)) {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 13px;
+  color: #d73a49;
+}
+
+.preview-content :deep(pre) {
+  margin: 8px 0;
+  padding: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+.preview-content :deep(pre code) {
+  display: block;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: transparent;
+  color: #d4d4d4;
+}
+
+.preview-content :deep(ul),
+.preview-content :deep(ol) {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.preview-content :deep(li) {
+  margin: 3px 0;
+}
+
+.preview-content :deep(blockquote) {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid #10a37f;
+  background: rgba(16, 163, 127, 0.05);
+  border-radius: 3px;
+}
+
+.preview-content :deep(hr) {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid #e5e7eb;
+}
+
+.preview-content :deep(table) {
+  margin: 8px 0;
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+
+.preview-content :deep(table th),
+.preview-content :deep(table td) {
+  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  text-align: left;
+}
+
+.preview-content :deep(table th) {
+  background: rgba(0, 0, 0, 0.03);
+  font-weight: 600;
+}
+
+.preview-content :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 6px 0;
+}
+
+/* Scrollbar for preview */
+.markdown-preview::-webkit-scrollbar {
+  width: 6px;
+}
+
+.markdown-preview::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.markdown-preview::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.markdown-preview::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .file-preview-area {
@@ -860,6 +1277,37 @@ defineExpose({
 @media (max-width: 768px) {
   .chat-input-container {
     padding: 16px 20px 20px;
+  }
+
+  .markdown-toolbar {
+    padding: 6px 8px;
+    margin-bottom: 10px;
+  }
+
+  .toolbar-buttons {
+    gap: 3px;
+  }
+
+  .md-btn {
+    min-width: 26px;
+    height: 26px;
+    font-size: 12px;
+  }
+
+  .markdown-hint {
+    font-size: 10px;
+  }
+
+  .preview-toggle {
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+
+  .markdown-preview {
+    min-height: 36px;
+    max-height: 150px;
+    padding: 10px 12px;
+    font-size: 14px;
   }
 
   .input-wrapper {

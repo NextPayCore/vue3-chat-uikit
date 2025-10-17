@@ -154,7 +154,29 @@
 import { ref, nextTick, watch, computed } from 'vue'
 import { ElIcon, ElMessage, ElProgress } from 'element-plus'
 import { Document, Microphone, CopyDocument, ChatLineRound } from '@element-plus/icons-vue'
+import MarkdownIt from 'markdown-it'
+import hljs from 'highlight.js'
 import type { IMessage } from '../interfaces/message.interface'
+
+// Initialize markdown parser with options
+const md: MarkdownIt = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
+  breaks: true,
+  highlight: function (str: string, lang: string): string {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return '<pre class="hljs"><code class="language-' + lang + '">' +
+               hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
+               '</code></pre>'
+      } catch (__) {
+        // Ignore errors
+      }
+    }
+    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>'
+  }
+})
 
 interface ChatListProps {
   messages: IMessage[]
@@ -224,13 +246,9 @@ const scrollToBottom = async () => {
 // Watch for new messages and auto-scroll
 watch(() => props.messages.length, scrollToBottom, { flush: 'post' })
 
-const formatMessage = (content: string) => {
-  // Basic markdown-like formatting
-  return content
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/`(.*?)`/g, '<code>$1</code>')
-    .replace(/\n/g, '<br>')
+const formatMessage = (content: string): string => {
+  // Use markdown-it to parse and render markdown
+  return md.render(content)
 }
 
 const formatTimestamp = (timestamp: Date) => {
@@ -318,6 +336,9 @@ defineExpose({
 </script>
 
 <style scoped>
+/* Import highlight.js theme */
+@import 'highlight.js/styles/github-dark.css';
+
 .chat-list-container {
   flex: 1;
   display: flex;
@@ -484,10 +505,35 @@ defineExpose({
 
 .message-text {
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.6;
   word-wrap: break-word;
   user-select: text;
   cursor: text;
+}
+
+/* Markdown Typography */
+.message-text :deep(h1),
+.message-text :deep(h2),
+.message-text :deep(h3),
+.message-text :deep(h4),
+.message-text :deep(h5),
+.message-text :deep(h6) {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: inherit;
+}
+
+.message-text :deep(h1) { font-size: 24px; }
+.message-text :deep(h2) { font-size: 20px; }
+.message-text :deep(h3) { font-size: 18px; }
+.message-text :deep(h4) { font-size: 16px; }
+.message-text :deep(h5) { font-size: 15px; }
+.message-text :deep(h6) { font-size: 14px; }
+
+.message-text :deep(p) {
+  margin: 8px 0;
 }
 
 .message-text :deep(strong) {
@@ -498,16 +544,160 @@ defineExpose({
   font-style: italic;
 }
 
-.message-text :deep(code) {
-  background: rgba(0, 0, 0, 0.1);
-  padding: 2px 4px;
-  border-radius: 4px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 13px;
+.message-text :deep(a) {
+  color: #10a37f;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s;
 }
 
-.user-message .message-text :deep(code) {
+.message-text :deep(a:hover) {
+  border-bottom-color: #10a37f;
+}
+
+.user-message .message-text :deep(a) {
+  color: rgba(255, 255, 255, 0.9);
+  border-bottom-color: rgba(255, 255, 255, 0.3);
+}
+
+.user-message .message-text :deep(a:hover) {
+  border-bottom-color: rgba(255, 255, 255, 0.9);
+}
+
+/* Inline code */
+.message-text :deep(code:not(.hljs)) {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+  font-size: 13px;
+  color: #d73a49;
+}
+
+.user-message .message-text :deep(code:not(.hljs)) {
   background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Code blocks */
+.message-text :deep(pre) {
+  margin: 12px 0;
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+.message-text :deep(pre code) {
+  display: block;
+  padding: 16px;
+  overflow-x: auto;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  background: transparent;
+  color: #d4d4d4;
+}
+
+/* Lists */
+.message-text :deep(ul),
+.message-text :deep(ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.message-text :deep(li) {
+  margin: 4px 0;
+}
+
+.message-text :deep(ul) {
+  list-style-type: disc;
+}
+
+.message-text :deep(ol) {
+  list-style-type: decimal;
+}
+
+.message-text :deep(li > ul),
+.message-text :deep(li > ol) {
+  margin: 4px 0;
+}
+
+/* Blockquotes */
+.message-text :deep(blockquote) {
+  margin: 12px 0;
+  padding: 8px 16px;
+  border-left: 4px solid #10a37f;
+  background: rgba(16, 163, 127, 0.05);
+  border-radius: 4px;
+  color: inherit;
+}
+
+.user-message .message-text :deep(blockquote) {
+  border-left-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.message-text :deep(blockquote p) {
+  margin: 4px 0;
+}
+
+/* Horizontal rule */
+.message-text :deep(hr) {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.user-message .message-text :deep(hr) {
+  border-top-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Tables */
+.message-text :deep(table) {
+  margin: 12px 0;
+  border-collapse: collapse;
+  width: 100%;
+  overflow-x: auto;
+  display: block;
+  max-width: 100%;
+}
+
+.message-text :deep(table thead) {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.user-message .message-text :deep(table thead) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.message-text :deep(table th),
+.message-text :deep(table td) {
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  text-align: left;
+}
+
+.user-message .message-text :deep(table th),
+.user-message .message-text :deep(table td) {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.message-text :deep(table th) {
+  font-weight: 600;
+}
+
+/* Images */
+.message-text :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+/* Task lists */
+.message-text :deep(input[type="checkbox"]) {
+  margin-right: 6px;
 }
 
 .reply-message {
