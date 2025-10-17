@@ -7,3 +7,12 @@ export interface IChatInput {
   attachments?: IAttachment[]
   replyTo?: IMessage
 }
+
+export interface IUploadedFile {
+  id: string
+  name: string
+  size: number
+  type: string
+  file: File
+  preview?: string
+}

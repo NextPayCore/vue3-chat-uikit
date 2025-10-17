@@ -1,16 +1,25 @@
 import type { MessageStatusEnum } from '../enums/message.enum'
+import type { IUser } from './user.interface'
 
 export interface IMessage {
   id: string
   contentText?: string
-  sender: string
-  receiver?: string
+  sender: IUser
+  receiver?: IUser
   status: MessageStatusEnum
   attachments?: IAttachment[]
   replyTo?: IMessage
-  mentions?: string[]
+  mentions?: IUser[]
   createdAt: Date
   updatedAt: Date
+  content: string
+  role: 'user' | 'assistant'
+  timestamp: Date
+  type?: 'text' | 'image' | 'audio' | 'video'
+  isTyping?: boolean
+  avatar?: string
+  metadata?: Record<string, any>
+  selectedText?: string
 }
 
 export interface IAttachment {
