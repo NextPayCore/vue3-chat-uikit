@@ -37,36 +37,14 @@ export function useAuth() {
 
       let user: AuthUser | null = null
 
-      // Check if response has JWT credential (preferred method)
-      if (response.credential) {
-        console.log('✅ Found JWT credential')
-        const payload = decodeJWT(response.credential)
-        user = {
-          id: payload.sub || payload.id || 'unknown',
-          name: payload.name || payload.given_name || 'Google User',
-          email: payload.email || '',
-          avatarUrl: payload.picture || payload.avatar || '',
-          provider: 'google'
-        }
-      }
-      // Check if response already has user data
-      else if (response.email || response.name) {
-        console.log('✅ Found user data in response')
-        user = {
-          id: response.sub || response.id || 'user-' + Date.now(),
-          name: response.name || response.given_name || 'Google User',
-          email: response.email || '',
-          avatarUrl: response.picture || response.avatar || '',
-          provider: 'google'
-        }
-      }
+      //
       // Check if response has authorization code (OAuth flow)
-      else if (response.code) {
+       if (response.access_token) {
         console.log('✅ Received authorization code, sending to backend...')
 
         // Get API base URL from env or use same origin
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
-        const loginUrl = `${apiBaseUrl}/auth/login`
+        const loginUrl = `${apiBaseUrl}/api/auth/social-login`
 
         // Send authorization code to backend for processing
         const backendResponse = await fetch(loginUrl, {
@@ -75,11 +53,8 @@ export function useAuth() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            code: response.code,
-            provider: 'google',
-            redirectUri: window.location.origin,
-            hd: response.hd, // Hosted domain (if any)
-            scope: response.scope
+            accessToken: response.access_token,
+            type: 'google',
           })
         })
 
