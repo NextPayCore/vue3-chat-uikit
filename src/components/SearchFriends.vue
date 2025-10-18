@@ -370,7 +370,7 @@ const handleSendRequest = async (user: SearchUser) => {
         'Content-Type': 'application/json',
         ...(token && { 'Authorization': `Bearer ${token}` })
       },
-      body: JSON.stringify({ userId: user.id })
+      body: JSON.stringify({ addresseeId: user.id })
     })
 
     if (!response.ok) {
