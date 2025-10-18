@@ -3,6 +3,21 @@
     <!-- Login Modal -->
     <LoginModal v-model="showLoginModal" @success="handleLoginSuccess" />
 
+    <!-- Search Friends Drawer -->
+    <el-drawer
+      v-model="showSearchDrawer"
+      title="Search Friends"
+      direction="rtl"
+      size="600px"
+      :before-close="handleCloseSearch"
+    >
+      <SearchFriends
+        @send-request="handleFriendRequestSent"
+        @accept-request="handleFriendRequestAccepted"
+        @reject-request="handleFriendRequestRejected"
+      />
+    </el-drawer>
+
     <div class="chat-container">
       <!-- Header -->
       <div class="chat-header">
@@ -18,6 +33,17 @@
                 {{ authUser?.name?.charAt(0) }}
               </el-avatar>
               <span class="user-name">{{ authUser?.name }}</span>
+
+              <!-- Search Friends Button -->
+              <el-button
+                type="primary"
+                size="small"
+                @click="showSearchDrawer = true"
+              >
+                <el-icon><UserFilled /></el-icon>
+                Find Friends
+              </el-button>
+
               <el-button
                 type="danger"
                 size="small"
@@ -31,14 +57,14 @@
 
             <!-- Connection Status -->
             <div class="connection-status">
-              <el-tooltip :content="connectionStatusText" placement="bottom">
+              <!-- <el-tooltip :content="connectionStatusText" placement="bottom">
                 <div class="status-indicator" :class="connectionStatusClass">
                   <el-icon v-if="isConnected" :size="16"><CircleCheckFilled /></el-icon>
                   <el-icon v-else-if="isConnecting" :size="16" class="rotating"><Loading /></el-icon>
                   <el-icon v-else :size="16"><CircleCloseFilled /></el-icon>
                   <span>{{ connectionStatusText }}</span>
                 </div>
-              </el-tooltip>
+              </el-tooltip> -->
             </div>
           </div>
         </div>
@@ -71,11 +97,12 @@
 
 <script setup lang="ts">
 import { ref, nextTick, computed, onMounted, watch } from 'vue'
-import { CircleCheckFilled, CircleCloseFilled, Loading } from '@element-plus/icons-vue'
-import { ElAvatar, ElButton, ElTooltip, ElIcon } from 'element-plus'
+import { CircleCheckFilled, CircleCloseFilled, Loading, UserFilled } from '@element-plus/icons-vue'
+import { ElAvatar, ElButton, ElTooltip, ElIcon, ElDrawer, ElMessage } from 'element-plus'
 import ChatList from './components/ChatList.vue'
 import ChatInput from './components/ChatInput.vue'
 import LoginModal from './components/LoginModal.vue'
+import SearchFriends from './components/SearchFriends.vue'
 import { useSocket } from './composables/useSocket'
 import { useAuth } from './composables/useAuth'
 import type { IMessage } from './interfaces/message.interface'
@@ -102,11 +129,13 @@ const {
 } = useAuth()
 
 const showLoginModal = ref(!isAuthenticated.value)
+const showSearchDrawer = ref(false)
 
 // Watch auth state to show/hide login modal
 watch(isAuthenticated, (newValue) => {
   if (!newValue) {
     showLoginModal.value = true
+    showSearchDrawer.value = false // Close search when logged out
   }
 })
 
@@ -180,6 +209,9 @@ const {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
+      auth: {
+        token: localStorage.getItem('auth_token') || ''
+      }
     }
   },
   {
@@ -480,6 +512,26 @@ const handleReply = (message: IMessage, selectedText?: string) => {
 const handleCancelReply = () => {
   replyingTo.value = null
   console.log('Reply cancelled')
+}
+
+// Search Friends handlers
+const handleCloseSearch = (done: () => void) => {
+  done()
+}
+
+const handleFriendRequestSent = (userId: string) => {
+  console.log('Friend request sent to:', userId)
+  ElMessage.success('Friend request sent successfully')
+}
+
+const handleFriendRequestAccepted = (userId: string) => {
+  console.log('Friend request accepted:', userId)
+  ElMessage.success('Friend request accepted')
+}
+
+const handleFriendRequestRejected = (userId: string) => {
+  console.log('Friend request rejected:', userId)
+  ElMessage.info('Friend request rejected')
 }
 </script>
 
