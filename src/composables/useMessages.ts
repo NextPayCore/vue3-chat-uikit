@@ -277,7 +277,7 @@ export function useMessages() {
 
   // Helper to get current user ID from token
   const getCurrentUserId = (): string | null => {
-    const token = localStorage.getItem('auth_token')
+    const token = localStorage.getItem('accessToken')
     if (!token) return null
 
     try {

@@ -34,14 +34,14 @@
               <div class="friend-info">
                 <div class="friend-avatar-wrapper">
                   <el-avatar :size="48" :src="friend.avatarUrl || friend.avatar">
-                    {{ friend.name.charAt(0).toUpperCase() }}
+                    {{ (friend.name || friend.email || 'U').charAt(0).toUpperCase() }}
                   </el-avatar>
                   <div v-if="friend.isOnline" class="online-badge"></div>
                 </div>
 
                 <div class="friend-details">
-                  <div class="friend-name">{{ friend.name }}</div>
-                  <div class="friend-email">{{ friend.email }}</div>
+                  <div class="friend-name">{{ friend.name || friend.email || 'Unknown User' }}</div>
+                  <div class="friend-email">{{ friend.email || 'No email' }}</div>
                   <div v-if="!friend.isOnline && friend.lastSeen" class="friend-status">
                     Last seen {{ formatLastSeen(friend.lastSeen) }}
                   </div>
@@ -104,7 +104,7 @@
               class="request-card"
             >
               <div class="request-info">
-                <el-avatar :size="48">
+                <el-avatar :size="48" :src="getRequestUserAvatar(request)">
                   {{ getRequestUserName(request).charAt(0).toUpperCase() }}
                 </el-avatar>
 
@@ -211,12 +211,12 @@
             >
               <div class="blocked-info">
                 <el-avatar :size="48" :src="user.avatarUrl || user.avatar">
-                  {{ user.name.charAt(0).toUpperCase() }}
+                  {{ (user.name || user.email || 'U').charAt(0).toUpperCase() }}
                 </el-avatar>
 
                 <div class="blocked-details">
-                  <div class="blocked-name">{{ user.name }}</div>
-                  <div class="blocked-email">{{ user.email }}</div>
+                  <div class="blocked-name">{{ user.name || user.email || 'Unknown User' }}</div>
+                  <div class="blocked-email">{{ user.email || 'No email' }}</div>
                 </div>
               </div>
 
@@ -325,15 +325,88 @@ const formatLastSeen = (date: Date | string) => {
 
 // Get request user name (would need user data from API)
 const getRequestUserName = (request: IFriendship) => {
-  // TODO: Fetch user data or include in request
-  return 'User ' + request?.requesterId?.substring(0, 8)
+  const requesterId = request?.requesterId
+  
+  if (!requesterId) {
+    return 'Unknown User'
+  }
+  
+  // If it's a populated object
+  if (typeof requesterId === 'object' && requesterId !== null) {
+    return (requesterId as any).name || (requesterId as any).email || 'Unknown User'
+  }
+  
+  // If it's a string, might be a serialized object or just an ID
+  if (typeof requesterId === 'string') {
+    // Try to extract name from serialized object string
+    const nameMatch = requesterId.match(/name:\s*['"]([^'"]+)['"]/)
+    if (nameMatch && nameMatch[1]) {
+      return nameMatch[1]
+    }
+    
+    // Try to extract email from serialized object string
+    const emailMatch = requesterId.match(/email:\s*['"]([^'"]+)['"]/)
+    if (emailMatch && emailMatch[1]) {
+      return emailMatch[1]
+    }
+    
+    // If it's just a MongoDB ID (24 hex characters)
+    if (/^[0-9a-fA-F]{24}$/.test(requesterId)) {
+      return 'User ' + requesterId.substring(0, 8)
+    }
+    
+    // Last resort: show first 20 chars
+    return requesterId.substring(0, 20) + '...'
+  }
+  
+  return 'Unknown User'
+}
+
+// Get request user avatar
+const getRequestUserAvatar = (request: IFriendship) => {
+  const requesterId = request?.requesterId
+  
+  if (!requesterId) {
+    return undefined
+  }
+  
+  // If it's a populated object
+  if (typeof requesterId === 'object' && requesterId !== null) {
+    return (requesterId as any).avatar || (requesterId as any).avatarUrl
+  }
+  
+  // If it's a string, try to extract avatar URL
+  if (typeof requesterId === 'string') {
+    const avatarMatch = requesterId.match(/avatar:\s*['"]([^'"]+)['"]/)
+    if (avatarMatch && avatarMatch[1]) {
+      return avatarMatch[1]
+    }
+  }
+  
+  return undefined
 }
 
 // Accept request
 const acceptRequest = async (request: IFriendship) => {
-  actionLoading.value = request._id
+  // Extract the actual ID string (handle both _id and id fields)
+  const friendshipId = typeof request._id === 'string' ? request._id : (request as any).id
+  
+  console.log('🔍 [FriendshipManager] Accept request:', {
+    request,
+    friendshipId,
+    type: typeof friendshipId
+  })
+  
+  if (!friendshipId || typeof friendshipId !== 'string') {
+    ElMessage.error('Invalid friendship ID')
+    console.error('❌ Invalid friendshipId:', friendshipId)
+    return
+  }
+  
+  actionLoading.value = friendshipId
+  
   try {
-    await respondToRequest(request._id, 'accepted')
+    await respondToRequest(friendshipId, 'accepted')
     emit('refresh')
   } finally {
     actionLoading.value = null
@@ -342,9 +415,25 @@ const acceptRequest = async (request: IFriendship) => {
 
 // Decline request
 const declineRequest = async (request: IFriendship) => {
-  actionLoading.value = request._id
+  // Extract the actual ID string (handle both _id and id fields)
+  const friendshipId = typeof request._id === 'string' ? request._id : (request as any).id
+  
+  console.log('🔍 [FriendshipManager] Decline request:', {
+    request,
+    friendshipId,
+    type: typeof friendshipId
+  })
+  
+  if (!friendshipId || typeof friendshipId !== 'string') {
+    ElMessage.error('Invalid friendship ID')
+    console.error('❌ Invalid friendshipId:', friendshipId)
+    return
+  }
+  
+  actionLoading.value = friendshipId
+  
   try {
-    await respondToRequest(request._id, 'declined')
+    await respondToRequest(friendshipId, 'declined')
   } finally {
     actionLoading.value = null
   }

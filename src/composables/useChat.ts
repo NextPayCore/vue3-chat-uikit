@@ -63,7 +63,7 @@ export function useChat() {
     url: socketUrl,
     options: {
       auth: {
-        token: localStorage.getItem('auth_token') || ''
+        token: localStorage.getItem('accessToken') || ''
       }
     }
   })

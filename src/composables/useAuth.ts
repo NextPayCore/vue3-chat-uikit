@@ -16,13 +16,13 @@ const isLoading = ref(false)
 const api = useApi()
 
 // Load user from localStorage on init
-const savedUser = localStorage.getItem('auth_user')
+const savedUser = localStorage.getItem('user')
 if (savedUser) {
   try {
     currentUser.value = JSON.parse(savedUser)
   } catch (e) {
     console.error('Failed to parse saved user:', e)
-    localStorage.removeItem('auth_user')
+    localStorage.removeItem('user')
   }
 }
 
@@ -55,12 +55,12 @@ export function useAuth() {
           email: backendData.user?.email || '',
           avatarUrl: backendData.user?.avatarUrl || '',
           provider: 'google',
-          token: backendData.token // Save JWT token from backend
+          token: backendData.accessToken // Save JWT token from backend
         }
 
         // Save token to localStorage if provided
         if (user.token) {
-          localStorage.setItem('auth_token', user.token)
+          localStorage.setItem('accessToken', user.token)
         }
       }
       // Fallback: Create demo user for ANY response
@@ -87,8 +87,8 @@ export function useAuth() {
       currentUser.value = user
 
       // Save to localStorage
-      localStorage.setItem('auth_user', JSON.stringify(user))
-
+      localStorage.setItem('user', JSON.stringify(user))
+      localStorage.setItem('accessToken', user.token || '')
       ElMessage.success({
         message: `Welcome back, ${user.name}!`,
         duration: 3000
@@ -127,8 +127,8 @@ export function useAuth() {
     }
 
     currentUser.value = null
-    localStorage.removeItem('auth_user')
-    localStorage.removeItem('auth_token')
+    localStorage.removeItem('user')
+    localStorage.removeItem('accessToken')
 
     ElMessage.success({
       message: 'Successfully signed out',
@@ -143,47 +143,5 @@ export function useAuth() {
     handleGoogleLogin,
     handleGoogleLoginError,
     signOut
-  }
-}
-
-// Decode JWT token
-function decodeJWT(token: string): any {
-  try {
-    if (!token || typeof token !== 'string') {
-      throw new Error('Token is empty or invalid')
-    }
-
-    const parts = token.split('.')
-    if (parts.length !== 3) {
-      throw new Error(`Invalid token format: expected 3 parts, got ${parts.length}`)
-    }
-
-    const base64Url = parts[1]
-    if (!base64Url) {
-      throw new Error('Token payload is empty')
-    }
-
-    // Decode base64url to base64
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
-
-    // Add padding if needed
-    const pad = base64.length % 4
-    const paddedBase64 = pad ? base64 + '='.repeat(4 - pad) : base64
-
-    // Decode base64 to string
-    const jsonPayload = decodeURIComponent(
-      atob(paddedBase64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    )
-
-    const decoded = JSON.parse(jsonPayload)
-    console.log('✅ Decoded JWT payload:', decoded)
-    return decoded
-  } catch (error) {
-    console.error('Failed to decode JWT:', error)
-    console.error('Token:', token)
-    throw new Error(`Invalid token: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

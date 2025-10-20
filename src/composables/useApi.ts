@@ -26,6 +26,16 @@ export interface PaginatedResponse<T = any> {
   totalPages: number
 }
 
+export interface SearchUsersResponse {
+  users: IUser[]
+  totalUsers: number
+  page: number
+  limit: number
+  totalPages: number
+  hasNextPage: boolean
+  hasPrevPage: boolean
+}
+
 export interface FriendshipListResponse {
   friends: string[]
   totalFriends: number
@@ -43,7 +53,36 @@ export function useApi(config?: ApiConfig) {
 
   // Get auth token from localStorage
   const getAuthToken = (): string | null => {
-    return localStorage.getItem('auth_token')
+    return localStorage.getItem('accessToken')
+  }
+
+  // Check if user has valid token
+  const hasValidToken = (): boolean => {
+    const token = getAuthToken()
+    if (!token) return false
+
+    try {
+      // Decode JWT to check expiration
+      const parts = token.split('.')
+      if (parts.length !== 3 || !parts[1]) return false
+
+      const payload = JSON.parse(atob(parts[1]))
+      const exp = payload.exp * 1000 // Convert to milliseconds
+      const now = Date.now()
+
+      // Check if token is expired
+      if (exp < now) {
+        console.warn('⚠️ Token expired')
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('user')
+        return false
+      }
+
+      return true
+    } catch (error) {
+      console.error('Failed to validate token:', error)
+      return false
+    }
   }
 
   // Create request headers
@@ -55,10 +94,16 @@ export function useApi(config?: ApiConfig) {
     }
 
     const token = getAuthToken()
+    console.log('🔍 [useApi] Token exists:', !!token, token ? `(${token.substring(0, 20)}...)` : '')
+
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
+      console.log('✅ [useApi] Authorization header added')
+    } else {
+      console.warn('⚠️ [useApi] No token found - request will fail with 401')
     }
 
+    console.log('📤 [useApi] Request headers:', Object.keys(headers))
     return headers
   }
 
@@ -81,7 +126,21 @@ export function useApi(config?: ApiConfig) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`)
+        const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`
+
+        // Handle 401 Unauthorized - clear auth data
+        if (response.status === 401) {
+          console.warn('⚠️ Authentication failed (401), clearing auth data')
+          localStorage.removeItem('auth_token')
+          localStorage.removeItem('auth_user')
+
+          // Reload page to show login modal
+          setTimeout(() => {
+            window.location.reload()
+          }, 1000)
+        }
+
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
@@ -166,6 +225,27 @@ export function useApi(config?: ApiConfig) {
   // Search users
   const searchUsers = async (query: string, page = 1, pageSize = 20): Promise<PaginatedResponse<IUser>> => {
     return get<PaginatedResponse<IUser>>(`/api/users/search?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`)
+  }
+
+  // Search users for friendship (excludes current user and existing friends)
+  const searchUsersForFriendship = async (
+    query: string,
+    page = 1,
+    limit = 20,
+    options?: {
+      excludeCurrentUser?: boolean
+      excludeFriends?: boolean
+    }
+  ): Promise<SearchUsersResponse> => {
+    const params = new URLSearchParams({
+      query,
+      page: page.toString(),
+      limit: limit.toString(),
+      excludeCurrentUser: (options?.excludeCurrentUser ?? true).toString(),
+      excludeFriends: (options?.excludeFriends ?? true).toString()
+    })
+
+    return get<SearchUsersResponse>(`/api/friendship/search-users?${params.toString()}`)
   }
 
   // Get online users
@@ -288,14 +368,29 @@ export function useApi(config?: ApiConfig) {
     return post<IFriendship>('/api/friends/request', { userId })
   }
 
+  // Send friend request (alternative endpoint)
+  const sendFriendshipRequest = async (addresseeId: string): Promise<IFriendship> => {
+    return post<IFriendship>('/api/friendship/send-request', { addresseeId })
+  }
+
   // Accept friend request
   const acceptFriendRequest = async (friendshipId: string): Promise<IFriendship> => {
     return post<IFriendship>(`/api/friends/${friendshipId}/accept`)
   }
 
+  // Accept friend request (alternative endpoint using userId)
+  const acceptFriendshipRequest = async (userId: string): Promise<IFriendship> => {
+    return post<IFriendship>('/api/friendship/accept-request', { userId })
+  }
+
   // Reject friend request
   const rejectFriendRequest = async (friendshipId: string): Promise<void> => {
     return post<void>(`/api/friends/${friendshipId}/reject`)
+  }
+
+  // Reject friend request (alternative endpoint using userId)
+  const rejectFriendshipRequest = async (userId: string): Promise<void> => {
+    return post<void>('/api/friendship/reject-request', { userId })
   }
 
   // Remove friend
@@ -377,9 +472,9 @@ export function useApi(config?: ApiConfig) {
   // Social login (Google, Facebook, etc.)
   const socialLogin = async (provider: 'google' | 'facebook', accessToken: string): Promise<{
     user: IUser
-    token: string
+    accessToken: string
   }> => {
-    return post<{ user: IUser; token: string }>('/api/auth/social-login', {
+    return post<{ user: IUser; accessToken: string }>('/api/auth/social-login', {
       type: provider,
       accessToken,
     })
@@ -427,11 +522,16 @@ export function useApi(config?: ApiConfig) {
     patch,
     del,
 
+    // Auth utilities
+    getAuthToken,
+    hasValidToken,
+
     // User APIs
     getCurrentUser,
     getUserById,
     updateUserProfile,
     searchUsers,
+    searchUsersForFriendship,
     getOnlineUsers,
 
     // Conversation APIs
@@ -457,8 +557,11 @@ export function useApi(config?: ApiConfig) {
     getFriends,
     getFriendRequests,
     sendFriendRequest,
+    sendFriendshipRequest,
     acceptFriendRequest,
+    acceptFriendshipRequest,
     rejectFriendRequest,
+    rejectFriendshipRequest,
     removeFriend,
     blockUser,
     unblockUser,

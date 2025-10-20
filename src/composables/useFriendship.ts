@@ -22,6 +22,60 @@ const isLoading = ref(false)
 export function useFriendship() {
   const api = useApi()
 
+  // Helper: Extract user info from serialized string
+  const extractUserFromString = (serializedUser: string): Partial<IFriendUser> => {
+    if (!serializedUser || typeof serializedUser !== 'string') {
+      return {}
+    }
+
+    const idMatch = serializedUser.match(/_id:\s*new\s+ObjectId\('([^']+)'\)/)
+    const nameMatch = serializedUser.match(/name:\s*['"]([^'"]+)['"]/)
+    const emailMatch = serializedUser.match(/email:\s*['"]([^'"]+)['"]/)
+    const avatarMatch = serializedUser.match(/avatar:\s*['"]([^'"]+)['"]/)
+
+    return {
+      id: idMatch?.[1] || undefined,
+      name: nameMatch?.[1] || undefined,
+      email: emailMatch?.[1] || undefined,
+      avatar: avatarMatch?.[1] || undefined,
+      avatarUrl: avatarMatch?.[1] || undefined,
+      isOnline: false
+    }
+  }
+
+  // Helper: Transform friendship object to user object
+  const transformFriendshipToUser = (friendship: any, currentUserId: string): IFriendUser => {
+    // Determine which user is the friend (not current user)
+    let friendData: Partial<IFriendUser> = {}
+    
+    // Extract user info from requesterId or addresseeId
+    const requesterInfo = typeof friendship.requesterId === 'string' 
+      ? extractUserFromString(friendship.requesterId)
+      : friendship.requesterId
+    
+    const addresseeInfo = typeof friendship.addresseeId === 'string'
+      ? extractUserFromString(friendship.addresseeId)
+      : friendship.addresseeId
+
+    // Find which one is the friend (not current user)
+    if (requesterInfo.id === currentUserId) {
+      friendData = addresseeInfo
+    } else {
+      friendData = requesterInfo
+    }
+
+    return {
+      id: friendData.id || friendship.id || 'unknown',
+      name: friendData.name || 'Unknown User',
+      email: friendData.email || '',
+      avatar: friendData.avatar,
+      avatarUrl: friendData.avatarUrl || friendData.avatar,
+      isOnline: friendData.isOnline || false,
+      lastSeen: friendData.lastSeen,
+      friendshipId: friendship.id || friendship._id
+    }
+  }
+
   // Helper: Fetch user details from user IDs
   const fetchUserDetails = async (userIds: string[]): Promise<IFriendUser[]> => {
     try {
@@ -60,6 +114,12 @@ export function useFriendship() {
 
   // Get friendship list
   const getFriendshipList = async () => {
+    // Check if user has valid token before making API call
+    if (!api.hasValidToken()) {
+      console.log('⚠️ No valid auth token, skipping friendship list fetch')
+      return null
+    }
+
     isLoading.value = true
     try {
       // Call the API endpoint that returns just IDs
@@ -67,26 +127,56 @@ export function useFriendship() {
 
       console.log('📋 Friendship list response:', data)
 
+      // Get current user ID
+      const currentUser = localStorage.getItem('auth_user')
+      const currentUserId = currentUser ? JSON.parse(currentUser).id : null
+
       // Fetch user details for friends (if we have any)
-      if (data.friends.length > 0) {
-        friendsList.value = await fetchUserDetails(data.friends)
+      if (data.friends && data.friends.length > 0) {
+        // Check if friends is array of strings (IDs) or objects
+        if (typeof data.friends[0] === 'string') {
+          // Array of user IDs
+          friendsList.value = await fetchUserDetails(data.friends as string[])
+        } else if ((data.friends[0] as any).requesterId !== undefined) {
+          // Array of friendship objects - need to transform to user objects
+          friendsList.value = (data.friends as any[]).map(friendship => 
+            transformFriendshipToUser(friendship, currentUserId)
+          )
+        } else {
+          // Already full user objects
+          friendsList.value = (data.friends as unknown) as IFriendUser[]
+        }
       } else {
         friendsList.value = []
       }
 
-      // Convert request IDs to mock objects (until backend provides full request details)
-      pendingRequests.value = data.pendingRequests.map((id, index) => ({
-        _id: id,
-        requesterId: id,
-        addresseeId: 'current-user',
-        status: 'pending' as FriendshipStatus,
-        message: 'Hi! Let\'s be friends!',
-        createdAt: new Date(Date.now() - Math.random() * 86400000 * 7),
-        updatedAt: new Date()
-      }))
-
-      // TODO: When backend provides full request objects, use them directly
-      // pendingRequests.value = data.pendingRequests
+      // Handle pending requests - backend might return IDs or full objects
+      if (data.pendingRequests && data.pendingRequests.length > 0) {
+        if (typeof data.pendingRequests[0] === 'string') {
+          // If backend returns array of IDs, convert to mock objects
+          pendingRequests.value = data.pendingRequests.map((id) => ({
+            _id: id,
+            requesterId: id,
+            addresseeId: 'current-user',
+            status: 'pending' as FriendshipStatus,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }))
+        } else {
+          // Backend returns full objects, use them directly
+          pendingRequests.value = (data.pendingRequests as any[]).map((req) => ({
+            _id: req.id || req._id,
+            requesterId: req.requesterId,
+            addresseeId: req.addresseeId,
+            status: req.status || 'pending',
+            message: req.message,
+            createdAt: req.createdAt,
+            updatedAt: req.updatedAt
+          }))
+        }
+      } else {
+        pendingRequests.value = []
+      }
 
       sentRequests.value = []
       blockedUsers.value = []
@@ -102,8 +192,19 @@ export function useFriendship() {
       }
     } catch (error: any) {
       console.error('Get friendship list error:', error)
-      ElMessage.error(error.message || 'Failed to load friends')
-      throw error
+
+      // Check if it's an authentication error
+      if (error.message.includes('Unauthorized') || error.message.includes('401')) {
+        console.warn('⚠️ Authentication failed, token may be expired')
+        // Clear invalid token
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('auth_user')
+        // Don't show error message, user will be prompted to login again
+      } else {
+        ElMessage.error(error.message || 'Failed to load friends')
+      }
+
+      return null
     } finally {
       isLoading.value = false
     }
@@ -113,7 +214,7 @@ export function useFriendship() {
   const sendFriendRequest = async (addresseeId: string, message?: string) => {
     isLoading.value = true
     try {
-      const data = await api.post('/friendship/send-request', {
+      const data = await api.post('/api/friendship/send-request', {
         addresseeId,
         message
       })
@@ -136,12 +237,22 @@ export function useFriendship() {
     friendshipId: string,
     status: 'accepted' | 'declined'
   ) => {
+    console.log('📤 [useFriendship] Responding to request:', {
+      friendshipId,
+      status,
+      type: typeof friendshipId
+    })
+    
     isLoading.value = true
     try {
-      const data = await api.post('/friendship/respond-request', {
+      const payload = {
         friendshipId,
         status
-      })
+      }
+      
+      console.log('📤 [useFriendship] Request payload:', payload)
+      
+      const data = await api.post('/api/friendship/respond-request', payload)
 
       ElMessage.success(
         status === 'accepted' ? 'Friend request accepted' : 'Friend request declined'

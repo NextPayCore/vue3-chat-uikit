@@ -241,7 +241,7 @@ const {
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
       auth: {
-        token: localStorage.getItem('auth_token') || ''
+        token: localStorage.getItem('accessToken') || ''
       }
     }
   },
@@ -372,13 +372,21 @@ const handleSignOut = () => {
 }
 
 // Connect to socket on mount (only if enabled and authenticated)
-onMounted(() => {
+onMounted(async () => {
   if (!isAuthenticated.value) {
     console.log('⚠️ User not authenticated, showing login modal')
     showLoginModal.value = true
   } else {
-    // Load friendship data
-    getFriendshipList()
+    // Load friendship data (only if authenticated)
+    try {
+      await getFriendshipList()
+    } catch (error) {
+      console.error('Failed to load friendship data:', error)
+      // If authentication fails, show login modal
+      if (!isAuthenticated.value) {
+        showLoginModal.value = true
+      }
+    }
 
     if (USE_SOCKET) {
       console.log('🔌 Connecting to socket server:', SOCKET_URL)

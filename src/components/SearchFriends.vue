@@ -62,7 +62,7 @@
         >
           <div class="user-info">
             <div class="user-avatar-wrapper">
-              <el-avatar :size="48" :src="user.avatar">
+              <el-avatar :size="48" :src="user.avatar || user.avatarUrl">
                 {{ user.name.charAt(0).toUpperCase() }}
               </el-avatar>
               <div v-if="user.isOnline" class="online-badge"></div>
@@ -185,32 +185,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import {
-  Search,
-  Loading,
-  UserFilled,
-  Clock,
-  Check,
-  Close,
-  Lock
-} from '@element-plus/icons-vue'
-
-interface SearchUser {
-  id: string
-  name: string
-  email: string
-  avatar: string
-  isOnline: boolean
-  lastSeen?: string
-  isPrivate: boolean
-  allowFriendRequests: boolean
-  friendshipStatus?: 'pending' | 'accepted' | 'received' | 'blocked'
-}
+import { ref, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search, UserFilled, Loading, Lock, Plus, Check, Close } from '@element-plus/icons-vue'
+import { useApi, type SearchUsersResponse } from '../composables/useApi'
+import type { IUser } from '../interfaces/user.interface'
 
 interface SearchResponse {
-  users: SearchUser[]
+  users: IUser[]
   totalUsers: number
   page: number
   limit: number
@@ -230,7 +212,7 @@ const emit = defineEmits<{
 const searchQuery = ref('')
 const excludeFriends = ref(true)
 const isSearching = ref(false)
-const users = ref<SearchUser[]>([])
+const users = ref<IUser[]>([])
 const currentPage = ref(1)
 const pageSize = ref(20)
 const totalUsers = ref(0)
@@ -245,8 +227,8 @@ const loadingAction = ref<'send' | 'accept' | 'reject' | null>(null)
 // Debounce timer
 let searchTimeout: number | null = null
 
-// API Base URL
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
+// Use API composable
+const api = useApi()
 
 // Format last seen time
 const formatLastSeen = (lastSeen: string) => {
@@ -271,43 +253,37 @@ const searchUsers = async () => {
     return
   }
 
+  // Check if user is logged in
+  if (!api.hasValidToken()) {
+    console.warn('⚠️ Cannot search users: User not logged in')
+    ElMessage.warning({
+      message: 'Please login to search users',
+      duration: 3000
+    })
+    users.value = []
+    return
+  }
+
   isSearching.value = true
 
   try {
-    const params = new URLSearchParams({
-      query: searchQuery.value.trim(),
-      page: currentPage.value.toString(),
-      limit: pageSize.value.toString(),
-      excludeCurrentUser: 'true',
-      excludeFriends: excludeFriends.value.toString()
-    })
-
-    const url = `${apiBaseUrl}/api/friendship/search-users?${params}`
-
-    // Get auth token from localStorage
-    const token = localStorage.getItem('auth_token')
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
+    const response = await api.searchUsersForFriendship(
+      searchQuery.value.trim(),
+      currentPage.value,
+      pageSize.value,
+      {
+        excludeCurrentUser: true,
+        excludeFriends: excludeFriends.value
       }
-    })
+    )
 
-    if (!response.ok) {
-      throw new Error(`Search failed: ${response.status}`)
-    }
+    users.value = response.users
+    totalUsers.value = response.totalUsers
+    totalPages.value = response.totalPages
+    hasNextPage.value = response.hasNextPage
+    hasPrevPage.value = response.hasPrevPage
 
-    const data: SearchResponse = await response.json()
-
-    users.value = data.users
-    totalUsers.value = data.totalUsers
-    totalPages.value = data.totalPages
-    hasNextPage.value = data.hasNextPage
-    hasPrevPage.value = data.hasPrevPage
-
-    console.log('✅ Search results:', data)
+    console.log('✅ Search results:', response)
   } catch (error: any) {
     console.error('Search error:', error)
     ElMessage.error({
@@ -358,24 +334,12 @@ const handleSizeChange = (size: number) => {
 }
 
 // Handle send friend request
-const handleSendRequest = async (user: SearchUser) => {
+const handleSendRequest = async (user: IUser) => {
   loadingUserId.value = user.id
   loadingAction.value = 'send'
 
   try {
-    const token = localStorage.getItem('auth_token')
-    const response = await fetch(`${apiBaseUrl}/api/friendship/send-request`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
-      },
-      body: JSON.stringify({ addresseeId: user.id })
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to send friend request')
-    }
+    await api.sendFriendshipRequest(user.id)
 
     ElMessage.success({
       message: `Friend request sent to ${user.name}`,
@@ -398,24 +362,12 @@ const handleSendRequest = async (user: SearchUser) => {
 }
 
 // Handle accept friend request
-const handleAcceptRequest = async (user: SearchUser) => {
+const handleAcceptRequest = async (user: IUser) => {
   loadingUserId.value = user.id
   loadingAction.value = 'accept'
 
   try {
-    const token = localStorage.getItem('auth_token')
-    const response = await fetch(`${apiBaseUrl}/api/friendship/accept-request`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
-      },
-      body: JSON.stringify({ userId: user.id })
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to accept friend request')
-    }
+    await api.acceptFriendshipRequest(user.id)
 
     ElMessage.success({
       message: `You are now friends with ${user.name}`,
@@ -438,32 +390,20 @@ const handleAcceptRequest = async (user: SearchUser) => {
 }
 
 // Handle reject friend request
-const handleRejectRequest = async (user: SearchUser) => {
+const handleRejectRequest = async (user: IUser) => {
   loadingUserId.value = user.id
   loadingAction.value = 'reject'
 
   try {
-    const token = localStorage.getItem('auth_token')
-    const response = await fetch(`${apiBaseUrl}/api/friendship/reject-request`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
-      },
-      body: JSON.stringify({ userId: user.id })
-    })
+    await api.rejectFriendshipRequest(user.id)
 
-    if (!response.ok) {
-      throw new Error('Failed to reject friend request')
-    }
-
-    ElMessage.info({
+    ElMessage.success({
       message: `Friend request from ${user.name} rejected`,
       duration: 3000
     })
 
-    // Remove from list or update status
-    users.value = users.value.filter(u => u.id !== user.id)
+    // Remove user from list or update status
+    user.friendshipStatus = undefined
     emit('rejectRequest', user.id)
   } catch (error: any) {
     console.error('Reject request error:', error)
