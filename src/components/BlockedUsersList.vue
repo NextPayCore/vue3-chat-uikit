@@ -38,7 +38,7 @@
           <el-avatar :src="blockedUser.avatarUrl" :size="40">
             {{ blockedUser.name?.charAt(0) }}
           </el-avatar>
-          
+
           <div class="user-details">
             <div class="user-name">{{ blockedUser.name }}</div>
             <div class="user-email">{{ blockedUser.email }}</div>
@@ -139,7 +139,7 @@ const blockedUsersWithInfo = computed((): BlockedUserInfo[] => {
     // Determine who is the blocked user (not the current user)
     const isRequester = blocked.requesterId === currentUser.value?.id
     const blockedUserId = isRequester ? blocked.addresseeId : blocked.requesterId
-    
+
     // Get user info from the friendship object
     // In the real API, this should include populated user data
     return {
@@ -155,12 +155,12 @@ const blockedUsersWithInfo = computed((): BlockedUserInfo[] => {
 // Methods
 const formatDate = (date?: Date | string): string => {
   if (!date) return 'Unknown'
-  
+
   const d = new Date(date)
   const now = new Date()
   const diffTime = Math.abs(now.getTime() - d.getTime())
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  
+
   if (diffDays === 0) {
     return 'today'
   } else if (diffDays === 1) {
