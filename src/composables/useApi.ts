@@ -53,7 +53,12 @@ export function useApi(config?: ApiConfig) {
 
   // Get auth token from localStorage
   const getAuthToken = (): string | null => {
-    return localStorage.getItem('accessToken')
+    const token = localStorage.getItem('accessToken')
+    // Return null if token is empty or whitespace only
+    if (!token || !token.trim()) {
+      return null
+    }
+    return token
   }
 
   // Check if user has valid token
@@ -94,16 +99,15 @@ export function useApi(config?: ApiConfig) {
     }
 
     const token = getAuthToken()
-    console.log('🔍 [useApi] Token exists:', !!token, token ? `(${token.substring(0, 20)}...)` : '')
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
-      console.log('✅ [useApi] Authorization header added')
+      console.log('✅ [useApi] Authorization header added:', `Bearer ${token.substring(0, 20)}...`)
     } else {
-      console.warn('⚠️ [useApi] No token found - request will fail with 401')
+      console.warn('⚠️ [useApi] No token found - API request may fail with 401')
+      console.warn('� [useApi] Please login again to get a valid token')
     }
 
-    console.log('📤 [useApi] Request headers:', Object.keys(headers))
     return headers
   }
 
