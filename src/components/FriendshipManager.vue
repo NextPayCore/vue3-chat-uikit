@@ -326,7 +326,7 @@ const formatLastSeen = (date: Date | string) => {
 // Get request user name (would need user data from API)
 const getRequestUserName = (request: IFriendship) => {
   // TODO: Fetch user data or include in request
-  return 'User ' + request.requesterId.substring(0, 8)
+  return 'User ' + request?.requesterId?.substring(0, 8)
 }
 
 // Accept request
