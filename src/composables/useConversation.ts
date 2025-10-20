@@ -11,21 +11,114 @@ import type {
 const conversations = ref<IConversation[]>([])
 const activeConversation = ref<IConversation | null>(null)
 const isLoading = ref(false)
+const userCache = ref<Map<string, any>>(new Map()) // Cache for user details
 
 export function useConversation() {
   const api = useApi()
+
+  // Enrich conversations with user details from cache (friends list, messages, etc.)
+  const enrichConversationsWithUserDetails = (userMap: Map<string, any>) => {
+    userCache.value = userMap
+
+    // Update all conversations with cached user details
+    conversations.value = conversations.value.map(conv => {
+      const enrichedParticipants = conv.participants.map(participant => {
+        const cachedUser = userCache.value.get(participant.id)
+        if (cachedUser) {
+          return {
+            ...participant,
+            name: cachedUser.name || participant.name,
+            email: cachedUser.email || participant.email,
+            avatarUrl: cachedUser.avatarUrl || cachedUser.avatar || participant.avatarUrl,
+            isOnline: cachedUser.isOnline || participant.isOnline
+          }
+        }
+        return participant
+      })
+
+      return {
+        ...conv,
+        participants: enrichedParticipants
+      }
+    })
+  }
 
   // Get all conversations
   const getConversations = async (page = 1, limit = 50) => {
     isLoading.value = true
     try {
-      const data: IConversationListResponse = await api.get(
+      const data = await api.get(
         `/api/chat/conversations?page=${page}&limit=${limit}`
       )
 
-      conversations.value = data.conversations
+      // Handle both response formats:
+      // 1. Array format: [{...}, {...}] (current backend)
+      // 2. Object format: {conversations: [...], total: ..., page: ..., limit: ...}
+      let conversationsList: any[] = []
 
-      return data
+      if (Array.isArray(data)) {
+        conversationsList = data
+      } else {
+        conversationsList = data.conversations || []
+      }
+
+      // Adapt backend response to match IConversation interface
+      // Backend returns: {id, type, participants: string[], createdBy: string, ...}
+      // Frontend expects: {_id, type, participants: IUser[], participantIds: string[], ...}
+      //
+      // ⚠️ NOTE: Backend does NOT populate participants, so we create placeholder user objects
+      // The actual user names will be loaded when we fetch friends list or messages
+      const adaptedConversations = conversationsList.map((conv: any) => {
+        // Create placeholder user objects from participant IDs
+        let participantUsers = []
+        if (conv.participants && conv.participants.length > 0) {
+          if (typeof conv.participants[0] === 'string') {
+            // Participants are IDs, create minimal user objects
+            // These will be enriched later when we have user data from other sources
+            participantUsers = conv.participants.map((userId: string) => ({
+              id: userId,
+              name: userId.substring(0, 8) + '...', // Temporary: show part of ID
+              email: '',
+              avatarUrl: '',
+              isOnline: false
+            }))
+          } else {
+            // Participants are already populated (rare case)
+            participantUsers = conv.participants
+          }
+        }
+
+        return {
+          _id: conv.id || conv._id,
+          type: conv.type,
+          name: conv.name,
+          description: conv.description,
+          avatar: conv.avatar,
+          participants: participantUsers,
+          participantIds: conv.participants || [],
+          createdBy: typeof conv.createdBy === 'string' ? conv.createdBy : conv.createdBy?.id,
+          lastMessage: conv.lastMessage,
+          lastMessageAt: conv.lastMessageAt ? new Date(conv.lastMessageAt) : new Date(conv.updatedAt),
+          unreadCount: conv.unreadCount || 0,
+          createdAt: new Date(conv.createdAt),
+          updatedAt: new Date(conv.updatedAt),
+          metadata: {
+            isActive: conv.isActive ?? true,
+            isMuted: false,
+            isPinned: false
+          }
+        } as IConversation
+      })
+
+      conversations.value = adaptedConversations
+
+      return {
+        conversations: adaptedConversations,
+        total: adaptedConversations.length,
+        page,
+        limit,
+        hasMore: false
+      } as IConversationListResponse
     } catch (error: any) {
       console.error('Get conversations error:', error)
       ElMessage.error(error.message || 'Failed to load conversations')
@@ -132,6 +225,7 @@ export function useConversation() {
     conversations,
     activeConversation,
     isLoading,
+    userCache,
 
     // Computed
     privateConversations,
@@ -143,6 +237,7 @@ export function useConversation() {
     createConversation,
     getConversation,
     deleteConversation,
-    setActiveConversation
+    setActiveConversation,
+    enrichConversationsWithUserDetails
   }
 }

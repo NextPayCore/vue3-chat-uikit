@@ -41,7 +41,9 @@ export interface IMessage {
   content: string
   role: 'user' | 'assistant'
   timestamp: Date
-  type?: 'text' | 'image' | 'audio' | 'video'
+  type?: 'text' | 'image' | 'audio' | 'video' | 'file'
+  fileUrl?: string
+  fileName?: string
   isTyping?: boolean
   avatar?: string
   metadata?: Record<string, any>

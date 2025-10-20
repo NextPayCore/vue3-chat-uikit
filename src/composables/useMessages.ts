@@ -10,7 +10,7 @@ export interface IChatMessage {
   senderName?: string
   senderAvatar?: string
   content: string
-  type: 'text' | 'image' | 'file' | 'system'
+  type: 'text' | 'image' | 'file' | 'audio' | 'video' | 'system'
   fileUrl?: string
   fileName?: string
   readBy: string[]
@@ -39,7 +39,7 @@ export interface IMessageHistory {
 
 export interface ISendMessagePayload {
   content: string
-  type?: 'text' | 'image' | 'file' | 'system'
+  type?: 'text' | 'image' | 'file' | 'audio' | 'video' | 'system'
   fileUrl?: string
   fileName?: string
   replyTo?: string

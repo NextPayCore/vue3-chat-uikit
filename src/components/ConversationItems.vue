@@ -155,9 +155,11 @@ const getLastMessagePreview = (conversation: IConversation): string => {
   if (msg.type === 'image') {
     return `${senderPrefix}📷 Image`
   } else if (msg.type === 'file') {
-    return `${senderPrefix}📎 ${msg.metadata?.files?.[0]?.name || 'File'}`
+    return `${senderPrefix}📎 ${msg.fileName || 'File'}`
   } else if (msg.type === 'audio') {
     return `${senderPrefix}🎤 Voice message`
+  } else if (msg.type === 'video') {
+    return `${senderPrefix}🎥 Video`
   }
 
   const content = msg.content || ''

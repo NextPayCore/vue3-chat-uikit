@@ -183,7 +183,8 @@ const {
   isLoading,
   getConversations,
   createConversation,
-  deleteConversation
+  deleteConversation,
+  enrichConversationsWithUserDetails
 } = useConversation()
 
 const { friendsList, getFriendshipList } = useFriendship()
@@ -299,10 +300,26 @@ const handleCreateConversation = async () => {
 
 // Lifecycle
 onMounted(async () => {
-  await Promise.all([
-    getConversations(),
-    getFriendshipList()
-  ])
+  // First load friends to get user details
+  await getFriendshipList()
+
+  // Create user cache from friends list
+  const userMap = new Map()
+  friendsList.value.forEach(friend => {
+    userMap.set(friend.id, {
+      id: friend.id,
+      name: friend.name,
+      email: friend.email,
+      avatarUrl: friend.avatarUrl || friend.avatar,
+      isOnline: friend.isOnline
+    })
+  })
+
+  // Then load conversations
+  await getConversations()
+
+  // Enrich conversations with user details from friends
+  enrichConversationsWithUserDetails(userMap)
 })
 </script>
 
