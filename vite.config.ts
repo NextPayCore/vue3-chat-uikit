@@ -5,6 +5,12 @@ import { resolve } from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
+   server: {
+    port: 5173,
+    host: '0.0.0.0',
+    allowedHosts: true,
+    open: true
+  },
   plugins: [vue()],
   resolve: {
     alias: {
