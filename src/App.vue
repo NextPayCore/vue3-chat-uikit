@@ -36,8 +36,8 @@
       <div class="chat-header">
         <div class="header-content">
           <div>
-            <h1>ChatGPT Clone Demo</h1>
-            <p>Vue 3 Chat UI Kit with Socket.IO</p>
+            <h1>Chat Application</h1>
+            <p>Vue 3 Chat UI Kit with Socket.IO & Real-time Messaging</p>
           </div>
           <div class="header-actions">
             <!-- User Info -->
@@ -76,60 +76,107 @@
             </div>
 
             <!-- Connection Status -->
-            <div class="connection-status">
-              <!-- <el-tooltip :content="connectionStatusText" placement="bottom">
+            <div v-if="USE_SOCKET" class="connection-status">
+              <el-tooltip :content="connectionStatusText" placement="bottom">
                 <div class="status-indicator" :class="connectionStatusClass">
                   <el-icon v-if="isConnected" :size="16"><CircleCheckFilled /></el-icon>
                   <el-icon v-else-if="isConnecting" :size="16" class="rotating"><Loading /></el-icon>
                   <el-icon v-else :size="16"><CircleCloseFilled /></el-icon>
                   <span>{{ connectionStatusText }}</span>
                 </div>
-              </el-tooltip> -->
+              </el-tooltip>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Chat messages area -->
-      <ChatList
-        :messages="messages"
-        :auto-scroll="true"
-        :show-token-quota="true"
-        :token-quota="tokenQuota"
-        @message-click="handleMessageClick"
-        @reply="handleReply"
-      />
+      <!-- Main chat area -->
+      <div class="chat-main">
+        <!-- Conversation list sidebar -->
+        <div class="conversation-sidebar">
+          <ConversationList @select="handleSelectConversation" />
+        </div>
 
-      <!-- Input area -->
-      <ChatInput
-        :disabled="!isAuthenticated || isLoading || (USE_SOCKET && !isConnected)"
-        :placeholder="isAuthenticated ? 'Message ChatGPT...' : 'Please sign in to chat'"
-        :reply-to="replyingTo"
-        @send="handleSendMessage"
-        @typing="handleTyping"
-        @voice-start="handleVoiceStart"
-        @voice-end="handleVoiceEnd"
-        @cancel-reply="handleCancelReply"
-      />
+        <!-- Chat area -->
+        <div class="chat-area">
+          <template v-if="activeConversation">
+            <!-- Conversation header -->
+            <div class="conversation-header">
+              <div class="conversation-info">
+                <el-avatar :src="conversationAvatar" :size="40">
+                  {{ conversationName.charAt(0) }}
+                </el-avatar>
+                <div class="conversation-details">
+                  <h3>{{ conversationName }}</h3>
+                  <p v-if="typingUsers.length > 0" class="typing-indicator">
+                    {{ typingUsers.join(', ') }} {{ typingUsers.length === 1 ? 'is' : 'are' }} typing...
+                  </p>
+                  <p v-else-if="activeConversation.type === 'group'">
+                    {{ activeConversation.participants.length }} members
+                  </p>
+                  <p v-else class="online-status">
+                    {{ isOtherUserOnline ? '🟢 Online' : '⚪ Offline' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Chat messages area -->
+            <ChatList
+              :messages="currentMessages"
+              :auto-scroll="true"
+              @message-click="handleMessageClick"
+              @reply="handleReply"
+            />
+
+            <!-- Input area -->
+            <ChatInput
+              :disabled="!isAuthenticated || isLoading || (USE_SOCKET && !isConnected)"
+              :placeholder="isAuthenticated ? `Message ${conversationName}...` : 'Please sign in to chat'"
+              :reply-to="replyingTo"
+              @send="handleSendMessage"
+              @typing="handleTyping"
+              @voice-start="handleVoiceStart"
+              @voice-end="handleVoiceEnd"
+              @cancel-reply="handleCancelReply"
+            />
+          </template>
+
+          <!-- Empty state -->
+          <div v-else class="empty-conversation-state">
+            <el-empty description="Select a conversation to start chatting">
+              <template #image>
+                <el-icon :size="100" color="#909399">
+                  <ChatDotRound />
+                </el-icon>
+              </template>
+            </el-empty>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, nextTick, computed, onMounted, watch } from 'vue'
-import { CircleCheckFilled, CircleCloseFilled, Loading, UserFilled } from '@element-plus/icons-vue'
-import { ElAvatar, ElButton, ElTooltip, ElIcon, ElDrawer, ElMessage } from 'element-plus'
+import { CircleCheckFilled, CircleCloseFilled, Loading, UserFilled, ChatDotRound } from '@element-plus/icons-vue'
+import { ElAvatar, ElButton, ElTooltip, ElIcon, ElDrawer, ElMessage, ElEmpty, ElBadge } from 'element-plus'
 import ChatList from './components/ChatList.vue'
 import ChatInput from './components/ChatInput.vue'
 import LoginModal from './components/LoginModal.vue'
 import SearchFriends from './components/SearchFriends.vue'
 import FriendshipManager from './components/FriendshipManager.vue'
+import ConversationList from './components/ConversationList.vue'
 import { useSocket } from './composables/useSocket'
 import { useAuth } from './composables/useAuth'
 import { useFriendship } from './composables/useFriendship'
+import { useConversation } from './composables/useConversation'
+import { useMessages } from './composables/useMessages'
 import type { IMessage } from './interfaces/message.interface'
 import type { IUploadedFile } from './interfaces/chatinput.interface'
 import type { IFriendUser } from './interfaces/friendship.interface'
+import type { IConversation } from './interfaces/conversation.interface'
 import { MessageStatusEnum } from './enums/message.enum'
 
 interface VoiceRecording {
@@ -157,6 +204,24 @@ const {
   getFriendshipList
 } = useFriendship()
 
+// Conversation
+const {
+  activeConversation,
+  setActiveConversation,
+  getConversations,
+  createConversation
+} = useConversation()
+
+// Messages
+const {
+  getMessages,
+  getChatHistory,
+  sendMessage: sendRestMessage,
+  markAllAsRead,
+  addMessage,
+  clearMessages
+} = useMessages()
+
 const showLoginModal = ref(!isAuthenticated.value)
 const showSearchDrawer = ref(false)
 const showFriendshipDrawer = ref(false)
@@ -165,60 +230,104 @@ const showFriendshipDrawer = ref(false)
 watch(isAuthenticated, (newValue) => {
   if (!newValue) {
     showLoginModal.value = true
-    showSearchDrawer.value = false // Close search when logged out
-    showFriendshipDrawer.value = false // Close friendship when logged out
+    showSearchDrawer.value = false
+    showFriendshipDrawer.value = false
   }
 })
 
-// Default users
-const assistantUser = {
-  id: 'assistant-1',
-  name: 'AI Assistant',
-  avatarUrl: '',
-  isOnline: true
-}
-
-const messages = ref<IMessage[]>([
-  {
-    id: '1',
-    content: `Hello! 👋 I'm your **AI assistant**. I support full *markdown* formatting!
-
-Here are some examples:
-
-## Features
-- **Bold text** and *italic text*
-- \`inline code\` and code blocks
-- [Links](https://example.com)
-- Lists and quotes
-
-### Code Example
-\`\`\`javascript
-function greet(name) {
-  return \`Hello, \${name}!\`;
-}
-\`\`\`
-
-> You can use the markdown toolbar below to format your messages easily!
-
-How can I help you today?`,
-    role: 'assistant',
-    timestamp: new Date(Date.now() - 60000),
-    type: 'text',
-    sender: assistantUser,
-    status: MessageStatusEnum.DELIVERED,
-    createdAt: new Date(Date.now() - 60000),
-    updatedAt: new Date(Date.now() - 60000)
-  }
-])
-
 const isLoading = ref(false)
 const replyingTo = ref<(IMessage & { selectedText?: string }) | null>(null)
+const typingUsers = ref<string[]>([])
+const onlineUsers = ref<Set<string>>(new Set())
 
-// Token quota state
-const tokenQuota = ref({
-  used: 1250,
-  total: 2000,
-  label: 'API Tokens'
+// Computed
+const currentMessages = computed((): IMessage[] => {
+  if (!activeConversation.value) return []
+
+  const chatMessages = getMessages(activeConversation.value._id)
+
+  // Convert IChatMessage to IMessage for the ChatList component
+  return chatMessages.map(msg => ({
+    id: msg.id,
+    content: msg.content,
+    contentText: msg.content,
+    sender: {
+      id: msg.senderId,
+      name: msg.senderName || 'Unknown',
+      avatarUrl: msg.senderAvatar || '',
+      isOnline: true
+    },
+    status: msg.readBy.includes(authUser.value?.id || '')
+      ? MessageStatusEnum.READ
+      : MessageStatusEnum.DELIVERED,
+    role: msg.senderId === authUser.value?.id ? 'user' : 'assistant',
+    timestamp: new Date(msg.createdAt),
+    type: msg.type === 'image' ? 'image' : msg.type === 'file' ? 'text' : 'text',
+    createdAt: new Date(msg.createdAt),
+    updatedAt: new Date(msg.updatedAt),
+    metadata: {
+      isEdited: msg.isEdited,
+      isDeleted: msg.isDeleted,
+      fileUrl: msg.fileUrl,
+      fileName: msg.fileName
+    },
+    replyTo: msg.replyToMessage ? {
+      id: msg.replyToMessage.id,
+      content: msg.replyToMessage.content,
+      contentText: msg.replyToMessage.content,
+      sender: {
+        id: msg.replyToMessage.senderId,
+        name: msg.replyToMessage.senderName || 'Unknown',
+        avatarUrl: msg.replyToMessage.senderAvatar || '',
+        isOnline: true
+      },
+      status: MessageStatusEnum.DELIVERED,
+      role: msg.replyToMessage.senderId === authUser.value?.id ? 'user' : 'assistant',
+      timestamp: new Date(msg.replyToMessage.createdAt),
+      createdAt: new Date(msg.replyToMessage.createdAt),
+      updatedAt: new Date(msg.replyToMessage.updatedAt)
+    } as IMessage : undefined
+  } as IMessage))
+})
+
+const conversationName = computed(() => {
+  if (!activeConversation.value) return ''
+
+  if (activeConversation.value.type === 'group') {
+    return activeConversation.value.name || 'Unnamed Group'
+  }
+
+  // For private chat, show the other participant's name
+  const otherParticipant = activeConversation.value.participants.find(
+    p => p.id !== authUser.value?.id
+  )
+  return otherParticipant?.name || 'Unknown User'
+})
+
+const conversationAvatar = computed(() => {
+  if (!activeConversation.value) return ''
+
+  if (activeConversation.value.type === 'group') {
+    return activeConversation.value.avatar || ''
+  }
+
+  // For private chat, show the other participant's avatar
+  const otherParticipant = activeConversation.value.participants.find(
+    p => p.id !== authUser.value?.id
+  )
+  return otherParticipant?.avatarUrl || ''
+})
+
+const isOtherUserOnline = computed(() => {
+  if (!activeConversation.value || activeConversation.value.type === 'group') {
+    return false
+  }
+
+  const otherParticipant = activeConversation.value.participants.find(
+    p => p.id !== authUser.value?.id
+  )
+
+  return otherParticipant ? onlineUsers.value.has(otherParticipant.id) : false
 })
 
 // Initialize socket
@@ -230,8 +339,9 @@ const {
   disconnect,
   sendMessage: socketSendMessage,
   sendTyping,
-  markAsDelivered,
-  markAsRead
+  markAsRead,
+  joinConversation,
+  leaveConversation
 } = useSocket(
   {
     url: SOCKET_URL,
@@ -248,68 +358,72 @@ const {
   {
     onConnect: () => {
       console.log('✅ Socket connected successfully')
+      // Rejoin active conversation if exists
+      if (activeConversation.value) {
+        joinConversation(activeConversation.value._id)
+      }
     },
     onDisconnect: () => {
       console.log('❌ Socket disconnected')
+      // Clear typing indicators
+      typingUsers.value = []
     },
     onError: (error) => {
       console.error('Socket error:', error)
     },
-    onMessage: (message: IMessage) => {
+    onNewMessage: (message: IMessage) => {
       console.log('📩 New message received:', message)
 
-      // Remove typing indicator if exists
-      messages.value = messages.value.filter(m => m.id !== 'typing')
+      // Convert IMessage to IChatMessage format if needed
+      // In production, the backend should send IChatMessage directly
+      // For now, we'll just log it and refresh the conversation
+      if (activeConversation.value) {
+        // Refresh messages for the active conversation
+        getChatHistory(activeConversation.value._id, 1, 50)
 
-      // Add new message
-      messages.value.push(message)
-
-      // Mark as delivered
-      markAsDelivered(message.id)
-
-      // Simulate token usage
-      const responseTokens = Math.floor(Math.random() * 80) + 20
-      tokenQuota.value.used = Math.min(tokenQuota.value.used + responseTokens, tokenQuota.value.total)
-    },
-    onTyping: (data) => {
-      console.log('User typing:', data)
-
-      if (data.isTyping && data.userId !== authUser.value?.id) {
-        // Add typing indicator if not already present
-        const hasTyping = messages.value.some(m => m.id === 'typing')
-        if (!hasTyping) {
-          const typingNow = new Date()
-          messages.value.push({
-            id: 'typing',
-            content: '',
-            role: 'assistant',
-            timestamp: typingNow,
-            type: 'text',
-            isTyping: true,
-            sender: assistantUser,
-            status: MessageStatusEnum.SENT,
-            createdAt: typingNow,
-            updatedAt: typingNow
-          })
+        // Remove typing indicator for this user
+        if (message.sender?.name) {
+          typingUsers.value = typingUsers.value.filter(u => u !== message.sender.name)
         }
-      } else {
-        // Remove typing indicator
-        messages.value = messages.value.filter(m => m.id !== 'typing')
+      }
+
+      // Refresh conversations list to update last message
+      getConversations()
+    },
+    onUserTyping: (data: { userId: string; conversationId: string; isTyping: boolean }) => {
+      console.log('⌨️ User typing:', data)
+
+      // Only show typing if it's for the active conversation
+      if (activeConversation.value?._id === data.conversationId && data.userId !== authUser.value?.id) {
+        // Find the user's name
+        const user = activeConversation.value.participants.find(p => p.id === data.userId)
+        if (user && user.name) {
+          if (data.isTyping) {
+            if (!typingUsers.value.includes(user.name)) {
+              typingUsers.value.push(user.name)
+            }
+          } else {
+            typingUsers.value = typingUsers.value.filter(u => u !== user.name)
+          }
+        }
       }
     },
-    onMessageDelivered: (messageId) => {
-      console.log('Message delivered:', messageId)
-      const message = messages.value.find(m => m.id === messageId)
-      if (message) {
-        message.status = MessageStatusEnum.DELIVERED
-      }
+    onMessageRead: (data: { messageId: string; readBy: string[] }) => {
+      console.log('✅ Message read:', data)
+      // You can update message read status here if needed
     },
-    onMessageRead: (messageId) => {
-      console.log('Message read:', messageId)
-      const message = messages.value.find(m => m.id === messageId)
-      if (message) {
-        message.status = MessageStatusEnum.READ
-      }
+    onConversationUpdated: (data: { conversationId: string; lastMessage?: IMessage }) => {
+      console.log('🔄 Conversation updated:', data)
+      // Refresh conversations list
+      getConversations()
+    },
+    onUserOnline: (userId: string) => {
+      console.log('🟢 User online:', userId)
+      onlineUsers.value.add(userId)
+    },
+    onUserOffline: (userId: string) => {
+      console.log('⚪ User offline:', userId)
+      onlineUsers.value.delete(userId)
     }
   }
 )
@@ -332,8 +446,11 @@ const handleLoginSuccess = () => {
   console.log('✅ Login successful')
   showLoginModal.value = false
 
-  // Load friendship data
-  getFriendshipList()
+  // Load data
+  Promise.all([
+    getFriendshipList(),
+    getConversations()
+  ])
 
   // Connect socket if enabled
   if (USE_SOCKET) {
@@ -343,6 +460,14 @@ const handleLoginSuccess = () => {
 }
 
 const handleSignOut = () => {
+  // Leave conversation before disconnect
+  if (activeConversation.value) {
+    if (USE_SOCKET && isConnected.value) {
+      leaveConversation(activeConversation.value._id)
+    }
+    setActiveConversation(null)
+  }
+
   signOut()
 
   // Disconnect socket
@@ -350,184 +475,118 @@ const handleSignOut = () => {
     disconnect()
   }
 
-  // Clear messages
-  messages.value = [{
-    id: '1',
-    content: `Hello! 👋 I'm your **AI assistant**. Sign in to start chatting!`,
-    role: 'assistant',
-    timestamp: new Date(),
-    type: 'text',
-    sender: assistantUser,
-    status: MessageStatusEnum.DELIVERED,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  }]
+  // Clear state
+  typingUsers.value = []
+  onlineUsers.value.clear()
+}
 
-  // Reset token quota
-  tokenQuota.value = {
-    used: 0,
-    total: 2000,
-    label: 'API Tokens'
+// Conversation handlers
+const handleSelectConversation = async (conversation: IConversation) => {
+  // Leave previous conversation
+  if (activeConversation.value && USE_SOCKET && isConnected.value) {
+    leaveConversation(activeConversation.value._id)
+  }
+
+  // Set new active conversation
+  setActiveConversation(conversation)
+
+  // Load chat history
+  isLoading.value = true
+  try {
+    await getChatHistory(conversation._id, 1, 50)
+
+    // Join conversation via socket
+    if (USE_SOCKET && isConnected.value) {
+      joinConversation(conversation._id)
+    }
+
+    // Mark all as read
+    await markAllAsRead(conversation._id)
+
+    // Clear typing indicators
+    typingUsers.value = []
+  } catch (error) {
+    console.error('Failed to load conversation:', error)
+  } finally {
+    isLoading.value = false
   }
 }
 
-// Connect to socket on mount (only if enabled and authenticated)
-onMounted(async () => {
-  if (!isAuthenticated.value) {
-    console.log('⚠️ User not authenticated, showing login modal')
-    showLoginModal.value = true
-  } else {
-    // Load friendship data (only if authenticated)
-    try {
-      await getFriendshipList()
-    } catch (error) {
-      console.error('Failed to load friendship data:', error)
-      // If authentication fails, show login modal
-      if (!isAuthenticated.value) {
-        showLoginModal.value = true
-      }
-    }
-
-    if (USE_SOCKET) {
-      console.log('🔌 Connecting to socket server:', SOCKET_URL)
-      connect()
-    } else {
-      console.log('⚠️ Socket disabled, using demo mode')
-    }
-  }
-})
-
 const handleSendMessage = async (data: { message: string; files: IUploadedFile[]; voice?: VoiceRecording }) => {
-  if (!isAuthenticated.value) {
-    showLoginModal.value = true
+  if (!isAuthenticated.value || !activeConversation.value) {
+    if (!isAuthenticated.value) {
+      showLoginModal.value = true
+    } else {
+      ElMessage.warning('Please select a conversation first')
+    }
     return
   }
 
-  // Add user message
-  let userContent = data.message
-  if (data.voice) {
-    userContent = userContent || `Voice message (${data.voice.duration}s)`
-  } else if (data.files.length > 0) {
-    userContent = userContent || `Uploaded ${data.files.length} file(s)`
-  }
-
-  const now = new Date()
-
-  const userMessage: IMessage = {
-    id: Date.now().toString(),
-    content: userContent,
-    role: 'user',
-    timestamp: now,
-    type: data.voice ? 'audio' : (data.files.some(f => f.type.startsWith('image/')) ? 'image' : 'text'),
-    metadata: {
-      files: data.files.length > 0 ? data.files : undefined,
-      voice: data.voice
-    },
-    sender: {
-      id: authUser.value?.id || 'user-1',
-      name: authUser.value?.name || 'You',
-      avatarUrl: authUser.value?.avatarUrl || '',
-      isOnline: true
-    },
-    status: MessageStatusEnum.SENT,
-    createdAt: now,
-    updatedAt: now,
-    replyTo: replyingTo.value || undefined
-  }
-
-  messages.value.push(userMessage)
-
-  // Simulate token usage increase
-  const messageTokens = Math.floor(Math.random() * 50) + 10 // Random 10-60 tokens
-  tokenQuota.value.used = Math.min(tokenQuota.value.used + messageTokens, tokenQuota.value.total)
-
   // Clear reply state
+  const replyToId = replyingTo.value?.id
   replyingTo.value = null
+
+  const conversationId = activeConversation.value._id
+
+  // Prepare message content
+  let messageContent = data.message || ''
+  let messageType: 'text' | 'image' | 'file' | 'system' = 'text'
+  let fileUrl: string | undefined
+  let fileName: string | undefined
+
+  if (data.voice) {
+    messageContent = messageContent || `Voice message (${data.voice.duration}s)`
+    // In production, upload the voice file and get the URL
+    fileUrl = data.voice.url
+    fileName = `voice_${Date.now()}.webm`
+    messageType = 'file'
+  } else if (data.files.length > 0) {
+    const file = data.files[0]
+    if (file) {
+      messageContent = messageContent || file.name
+      fileUrl = file.preview
+      fileName = file.name
+      messageType = file.type.startsWith('image/') ? 'image' : 'file'
+    }
+  }
 
   // Send via socket if connected
   if (USE_SOCKET && isConnected.value) {
-    const sent = socketSendMessage(userMessage)
+    const sent = socketSendMessage(conversationId, {
+      content: messageContent,
+      type: messageType,
+      ...(replyToId && { replyTo: replyToId })
+    })
+
     if (sent) {
       console.log('✉️ Message sent via socket')
       return
     }
   }
 
-  // Fallback to demo mode
+  // Fallback to REST API
   isLoading.value = true
-
-  // Add typing indicator
-  const typingNow = new Date()
-  const typingMessage: IMessage = {
-    id: 'typing',
-    content: '',
-    role: 'assistant',
-    timestamp: typingNow,
-    type: 'text',
-    isTyping: true,
-    sender: assistantUser,
-    status: MessageStatusEnum.SENT,
-    createdAt: typingNow,
-    updatedAt: typingNow
-  }
-
-  await nextTick()
-  messages.value.push(typingMessage)
-
-  // Simulate response delay
-  setTimeout(() => {
-    // Remove typing message
-    messages.value = messages.value.filter(m => m.id !== 'typing')
-
-    // Create response based on content
-    let responseContent = ''
-    if (data.voice) {
-      responseContent = `I received your voice message of ${data.voice.duration} seconds. `
-      if (data.message) {
-        responseContent += `Along with text: "${data.message}". `
-      }
-      responseContent += 'This is a demo response. In a real application, I would transcribe and process the audio.'
-    } else if (data.files.length > 0) {
-      const fileNames = data.files.map(f => f.name).join(', ')
-      responseContent = `I can see you've uploaded: ${fileNames}. `
-      if (data.message) {
-        responseContent += `And your message: "${data.message}". `
-      }
-      responseContent += 'This is a demo response. In a real application, I would process these files and provide relevant information.'
-    } else if (data.message) {
-      responseContent = `I received your message: "${data.message}". This is a demo response from the ChatGPT-like UI. The actual AI integration would go here.`
-    }
-
-    // Add assistant response
-    const assistantNow = new Date()
-    const assistantMessage: IMessage = {
-      id: (Date.now() + 1).toString(),
-      content: responseContent,
-      role: 'assistant',
-      timestamp: assistantNow,
-      type: 'text',
-      sender: assistantUser,
-      status: MessageStatusEnum.DELIVERED,
-      createdAt: assistantNow,
-      updatedAt: assistantNow
-    }
-
-    messages.value.push(assistantMessage)
-
-    // Simulate token usage for assistant response
-    const responseTokens = Math.floor(Math.random() * 80) + 20 // Random 20-100 tokens
-    tokenQuota.value.used = Math.min(tokenQuota.value.used + responseTokens, tokenQuota.value.total)
-
+  try {
+    await sendRestMessage(conversationId, {
+      content: messageContent,
+      type: messageType,
+      ...(fileUrl && { fileUrl }),
+      ...(fileName && { fileName }),
+      ...(replyToId && { replyTo: replyToId })
+    })
+  } catch (error) {
+    console.error('Failed to send message:', error)
+  } finally {
     isLoading.value = false
-  }, 2000)
+  }
 }
 
 const handleMessageClick = (message: IMessage) => {
   console.log('Message clicked:', message)
 
   // Mark as read when clicked
-  if (USE_SOCKET && isConnected.value && message.role === 'assistant') {
-    markAsRead(message.id)
+  if (USE_SOCKET && isConnected.value && activeConversation.value && message.sender?.id !== authUser.value?.id) {
+    markAsRead(activeConversation.value._id, message.id)
   }
 }
 
@@ -535,8 +594,8 @@ const handleTyping = (isTyping: boolean) => {
   console.log('User typing:', isTyping)
 
   // Send typing indicator via socket
-  if (USE_SOCKET && isConnected.value) {
-    sendTyping(isTyping)
+  if (USE_SOCKET && isConnected.value && activeConversation.value) {
+    sendTyping(activeConversation.value._id, isTyping)
   }
 }
 
@@ -561,6 +620,35 @@ const handleCancelReply = () => {
   console.log('Reply cancelled')
 }
 
+// Connect to socket on mount (only if enabled and authenticated)
+onMounted(async () => {
+  if (!isAuthenticated.value) {
+    console.log('⚠️ User not authenticated, showing login modal')
+    showLoginModal.value = true
+  } else {
+    // Load data (only if authenticated)
+    try {
+      await Promise.all([
+        getFriendshipList(),
+        getConversations()
+      ])
+    } catch (error) {
+      console.error('Failed to load data:', error)
+      // If authentication fails, show login modal
+      if (!isAuthenticated.value) {
+        showLoginModal.value = true
+      }
+    }
+
+    if (USE_SOCKET) {
+      console.log('🔌 Connecting to socket server:', SOCKET_URL)
+      connect()
+    } else {
+      console.log('⚠️ Socket disabled, using REST API mode')
+    }
+  }
+})
+
 // Search Friends handlers
 const handleCloseSearch = (done: () => void) => {
   done()
@@ -582,17 +670,30 @@ const handleFriendRequestRejected = (userId: string) => {
 }
 
 // Friendship Manager handlers
-const handleStartChat = (friend: IFriendUser) => {
+const handleStartChat = async (friend: IFriendUser) => {
   console.log('Starting chat with:', friend)
-  ElMessage.success(`Starting chat with ${friend.name}`)
-  // TODO: Open chat with this friend
-  showFriendshipDrawer.value = false
+
+  try {
+    // Create or find private conversation with this friend
+    const conversation = await createConversation({
+      type: 'private',
+      participantIds: [friend.id]
+    })
+
+    if (conversation) {
+      await handleSelectConversation(conversation)
+      showFriendshipDrawer.value = false
+    }
+  } catch (error) {
+    console.error('Failed to start chat:', error)
+  }
 }
 
 const handleFriendshipRefresh = () => {
   console.log('Refreshing friendship data')
-  // The FriendshipManager will handle its own refresh
+  getFriendshipList()
 }
+
 </script>
 
 <style scoped>
@@ -607,7 +708,7 @@ const handleFriendshipRefresh = () => {
 
 .chat-container {
   width: 100%;
-  max-width: 800px;
+  max-width: 1400px;
   height: 90vh;
   background: white;
   border-radius: 12px;
@@ -621,6 +722,7 @@ const handleFriendshipRefresh = () => {
   background: linear-gradient(135deg, #10a37f 0%, #1a7f64 100%);
   color: white;
   padding: 20px;
+  flex-shrink: 0;
 }
 
 .header-content {
@@ -708,6 +810,71 @@ const handleFriendshipRefresh = () => {
   flex-shrink: 0;
 }
 
+.chat-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.conversation-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  border-right: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.conversation-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: white;
+  flex-shrink: 0;
+}
+
+.conversation-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.conversation-details h3 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.conversation-details p {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.typing-indicator {
+  color: #10a37f !important;
+  font-style: italic;
+}
+
+.online-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.empty-conversation-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
 @keyframes rotate {
   from {
     transform: rotate(0deg);
@@ -766,6 +933,21 @@ const handleFriendshipRefresh = () => {
   .status-indicator {
     padding: 6px 12px;
     font-size: 12px;
+  }
+
+  .conversation-sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    background: white;
+  }
+
+  .conversation-sidebar.show {
+    transform: translateX(0);
   }
 }
 </style>

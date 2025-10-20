@@ -20,7 +20,7 @@ export function useConversation() {
     isLoading.value = true
     try {
       const data: IConversationListResponse = await api.get(
-        `/chat/conversations?page=${page}&limit=${limit}`
+        `/api/chat/conversations?page=${page}&limit=${limit}`
       )
 
       conversations.value = data.conversations
@@ -44,7 +44,7 @@ export function useConversation() {
         throw new Error('Group conversations must have at least 3 participants (including you)')
       }
 
-      const data = await api.post('/chat/conversations', request)
+      const data = await api.post('/api/chat/conversations', request)
 
       ElMessage.success(
         request.type === 'private'
@@ -79,7 +79,7 @@ export function useConversation() {
   // Get conversation by ID
   const getConversation = async (conversationId: string) => {
     try {
-      return await api.get(`/chat/conversations/${conversationId}`)
+      return await api.get(`/api/chat/conversations/${conversationId}`)
     } catch (error: any) {
       console.error('Get conversation error:', error)
       ElMessage.error(error.message || 'Failed to load conversation')
@@ -91,7 +91,7 @@ export function useConversation() {
   const deleteConversation = async (conversationId: string) => {
     isLoading.value = true
     try {
-      await api.del(`/chat/conversations/${conversationId}`)
+      await api.del(`/api/chat/conversations/${conversationId}`)
 
       ElMessage.success('Conversation deleted')
 

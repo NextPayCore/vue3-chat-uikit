@@ -63,7 +63,7 @@ export function useMessages() {
     isLoadingMessages.value = true
     try {
       const data: IMessageHistory = await api.get(
-        `/chat/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
+        `/api/chat/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
       )
 
       // Store messages
@@ -99,7 +99,7 @@ export function useMessages() {
   ): Promise<IChatMessage | null> => {
     try {
       const data = await api.post(
-        `/chat/conversations/${conversationId}/messages`,
+        `/api/chat/conversations/${conversationId}/messages`,
         {
           content: payload.content,
           type: payload.type || 'text',
@@ -178,7 +178,7 @@ export function useMessages() {
   // Mark all messages in conversation as read
   const markAllAsRead = async (conversationId: string): Promise<boolean> => {
     try {
-      await api.put(`/chat/conversations/${conversationId}/read`)
+      await api.put(`/api/chat/conversations/${conversationId}/read`)
 
       // Update local messages readBy
       const conversationMessages = messages.value.get(conversationId)

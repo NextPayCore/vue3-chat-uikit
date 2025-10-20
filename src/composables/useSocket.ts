@@ -1,6 +1,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { io, Socket } from 'socket.io-client'
 import type { IMessage } from '../interfaces/message.interface'
+import type { IConversation } from '../interfaces/conversation.interface'
 
 interface SocketConfig {
   url: string
@@ -19,10 +20,10 @@ interface SocketEvents {
   onConnect?: () => void
   onDisconnect?: () => void
   onError?: (error: Error) => void
-  onMessage?: (message: IMessage) => void
-  onTyping?: (data: { userId: string; isTyping: boolean }) => void
-  onMessageDelivered?: (messageId: string) => void
-  onMessageRead?: (messageId: string) => void
+  onNewMessage?: (message: IMessage) => void
+  onUserTyping?: (data: { userId: string; conversationId: string; isTyping: boolean }) => void
+  onMessageRead?: (data: { messageId: string; readBy: string[] }) => void
+  onConversationUpdated?: (data: { conversationId: string; lastMessage?: IMessage }) => void
   onUserOnline?: (userId: string) => void
   onUserOffline?: (userId: string) => void
 }
@@ -106,21 +107,25 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
       events?.onError?.(err)
     })
 
-    // Custom events
-    socket.value.on('message', (message: IMessage) => {
-      events?.onMessage?.(message)
+    // Chat API events (following the documentation)
+    socket.value.on('new_message', (message: IMessage) => {
+      console.log('📩 Received new_message event:', message)
+      events?.onNewMessage?.(message)
     })
 
-    socket.value.on('typing', (data: { userId: string; isTyping: boolean }) => {
-      events?.onTyping?.(data)
+    socket.value.on('user_typing', (data: { userId: string; conversationId: string; isTyping: boolean }) => {
+      console.log('⌨️ Received user_typing event:', data)
+      events?.onUserTyping?.(data)
     })
 
-    socket.value.on('message:delivered', (messageId: string) => {
-      events?.onMessageDelivered?.(messageId)
+    socket.value.on('message_read', (data: { messageId: string; readBy: string[] }) => {
+      console.log('✅ Received message_read event:', data)
+      events?.onMessageRead?.(data)
     })
 
-    socket.value.on('message:read', (messageId: string) => {
-      events?.onMessageRead?.(messageId)
+    socket.value.on('conversation_updated', (data: { conversationId: string; lastMessage?: IMessage }) => {
+      console.log('🔄 Received conversation_updated event:', data)
+      events?.onConversationUpdated?.(data)
     })
 
     socket.value.on('user:online', (userId: string) => {
@@ -132,51 +137,61 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
     })
   }
 
-  // Send message
-  const sendMessage = (message: Partial<IMessage>) => {
+  // Send message via socket (following Chat API docs)
+  const sendMessage = (conversationId: string, message: { content: string; type?: string; replyTo?: string }) => {
     if (!socket.value?.connected) {
       console.error('Socket not connected')
       return false
     }
 
-    socket.value.emit('message:send', message)
+    console.log('📤 Emitting send_message:', { conversationId, message })
+    socket.value.emit('send_message', {
+      conversationId,
+      message
+    })
     return true
   }
 
-  // Send typing indicator
-  const sendTyping = (isTyping: boolean) => {
+  // Send typing indicator (following Chat API docs)
+  const sendTyping = (conversationId: string, isTyping: boolean) => {
     if (!socket.value?.connected) return
 
-    socket.value.emit('typing', { isTyping })
+    const event = isTyping ? 'typing_start' : 'typing_stop'
+    console.log(`⌨️ Emitting ${event}:`, { conversationId })
+    socket.value.emit(event, { conversationId })
   }
 
-  // Mark message as delivered
+  // Mark message as read (following Chat API docs)
+  const markAsRead = (conversationId: string, messageId: string) => {
+    if (!socket.value?.connected) return
+
+    console.log('✅ Emitting mark_as_read:', { conversationId, messageId })
+    socket.value.emit('mark_as_read', {
+      conversationId,
+      messageId
+    })
+  }
+
+  // Mark message as delivered (deprecated in favor of mark_as_read)
   const markAsDelivered = (messageId: string) => {
-    if (!socket.value?.connected) return
-
-    socket.value.emit('message:delivered', { messageId })
+    console.warn('markAsDelivered is deprecated, use markAsRead instead')
   }
 
-  // Mark message as read
-  const markAsRead = (messageId: string) => {
-    if (!socket.value?.connected) return
-
-    socket.value.emit('message:read', { messageId })
-  }
-
-  // Join room/channel
-  const joinRoom = (roomId: string) => {
+  // Join conversation (following Chat API docs)
+  const joinConversation = (conversationId: string) => {
     if (!socket.value?.connected) return false
 
-    socket.value.emit('room:join', { roomId })
+    console.log('🚪 Emitting join_conversation:', { conversationId })
+    socket.value.emit('join_conversation', { conversationId })
     return true
   }
 
-  // Leave room/channel
-  const leaveRoom = (roomId: string) => {
+  // Leave conversation (following Chat API docs)
+  const leaveConversation = (conversationId: string) => {
     if (!socket.value?.connected) return
 
-    socket.value.emit('room:leave', { roomId })
+    console.log('👋 Emitting leave_conversation:', { conversationId })
+    socket.value.emit('leave_conversation', { conversationId })
   }
 
   // Emit custom event
@@ -222,10 +237,10 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
     disconnect,
     sendMessage,
     sendTyping,
-    markAsDelivered,
     markAsRead,
-    joinRoom,
-    leaveRoom,
+    markAsDelivered,
+    joinConversation,
+    leaveConversation,
     emit,
     on,
     off,
