@@ -42,7 +42,7 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
 
     isConnecting.value = true
     error.value = null
-
+    console.log('Connecting to socket server...', config.options)
     try {
       socket.value = io(config.url, {
         autoConnect: false,
@@ -50,7 +50,7 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
         reconnectionDelay: 1000,
         reconnectionAttempts: 5,
         timeout: 10000,
-        transports: ['websocket', 'polling'],
+        transports: ['websocket'],
         ...config.options,
       })
 
