@@ -47,12 +47,12 @@ export function useFriendship() {
   const transformFriendshipToUser = (friendship: any, currentUserId: string): IFriendUser => {
     // Determine which user is the friend (not current user)
     let friendData: Partial<IFriendUser> = {}
-    
+
     // Extract user info from requesterId or addresseeId
-    const requesterInfo = typeof friendship.requesterId === 'string' 
+    const requesterInfo = typeof friendship.requesterId === 'string'
       ? extractUserFromString(friendship.requesterId)
       : friendship.requesterId
-    
+
     const addresseeInfo = typeof friendship.addresseeId === 'string'
       ? extractUserFromString(friendship.addresseeId)
       : friendship.addresseeId
@@ -139,7 +139,7 @@ export function useFriendship() {
           friendsList.value = await fetchUserDetails(data.friends as string[])
         } else if ((data.friends[0] as any).requesterId !== undefined) {
           // Array of friendship objects - need to transform to user objects
-          friendsList.value = (data.friends as any[]).map(friendship => 
+          friendsList.value = (data.friends as any[]).map(friendship =>
             transformFriendshipToUser(friendship, currentUserId)
           )
         } else {
@@ -242,16 +242,16 @@ export function useFriendship() {
       status,
       type: typeof friendshipId
     })
-    
+
     isLoading.value = true
     try {
       const payload = {
         friendshipId,
         status
       }
-      
+
       console.log('📤 [useFriendship] Request payload:', payload)
-      
+
       const data = await api.post('/api/friendship/respond-request', payload)
 
       ElMessage.success(
@@ -273,7 +273,7 @@ export function useFriendship() {
   const blockUser = async (userId: string, reason?: string) => {
     isLoading.value = true
     try {
-      const data = await api.post('/friendship/block', {
+      const data = await api.post('/api/friendship/block', {
         userId,
         reason
       })
@@ -295,7 +295,7 @@ export function useFriendship() {
   const unblockUser = async (userId: string) => {
     isLoading.value = true
     try {
-      const data = await api.del(`/friendship/unblock/${userId}`)
+      const data = await api.del(`/api/friendship/unblock/${userId}`)
 
       ElMessage.success('User unblocked successfully')
       await getFriendshipList() // Refresh list
@@ -314,7 +314,7 @@ export function useFriendship() {
   const removeFriend = async (friendId: string) => {
     isLoading.value = true
     try {
-      const data = await api.del(`/friendship/remove/${friendId}`)
+      const data = await api.del(`/api/friendship/remove/${friendId}`)
 
       ElMessage.success('Friend removed successfully')
       await getFriendshipList() // Refresh list
@@ -332,7 +332,7 @@ export function useFriendship() {
   // Check friendship status
   const checkFriendship = async (userId: string): Promise<IFriendshipCheckResponse> => {
     try {
-      return await api.get(`/friendship/check/${userId}`)
+      return await api.get(`/api/friendship/check/${userId}`)
     } catch (error: any) {
       console.error('Check friendship error:', error)
       throw error
@@ -343,7 +343,7 @@ export function useFriendship() {
   const getSuggestedFriends = async () => {
     isLoading.value = true
     try {
-      const data = await api.get('/friendship/suggested-friends')
+      const data = await api.get('/api/friendship/suggested-friends')
       suggestedFriends.value = data.suggestions || []
 
       return data
