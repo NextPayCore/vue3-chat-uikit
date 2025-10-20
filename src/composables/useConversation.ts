@@ -1,12 +1,11 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useApi } from './useApi'
 import type {
   IConversation,
   ICreateConversationRequest,
   IConversationListResponse
 } from '../interfaces/conversation.interface'
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 
 // State
 const conversations = ref<IConversation[]>([])
@@ -14,28 +13,16 @@ const activeConversation = ref<IConversation | null>(null)
 const isLoading = ref(false)
 
 export function useConversation() {
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('auth_token')
-    return {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` })
-    }
-  }
+  const api = useApi()
 
   // Get all conversations
   const getConversations = async (page = 1, limit = 50) => {
     isLoading.value = true
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/chat/conversations?page=${page}&limit=${limit}`,
-        { headers: getAuthHeaders() }
+      const data: IConversationListResponse = await api.get(
+        `/chat/conversations?page=${page}&limit=${limit}`
       )
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch conversations')
-      }
-
-      const data: IConversationListResponse = await response.json()
       conversations.value = data.conversations
 
       return data
@@ -57,18 +44,7 @@ export function useConversation() {
         throw new Error('Group conversations must have at least 3 participants (including you)')
       }
 
-      const response = await fetch(`${apiBaseUrl}/chat/conversations`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(request)
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to create conversation')
-      }
-
-      const data = await response.json()
+      const data = await api.post('/chat/conversations', request)
 
       ElMessage.success(
         request.type === 'private'
@@ -103,16 +79,7 @@ export function useConversation() {
   // Get conversation by ID
   const getConversation = async (conversationId: string) => {
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/chat/conversations/${conversationId}`,
-        { headers: getAuthHeaders() }
-      )
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch conversation')
-      }
-
-      return await response.json()
+      return await api.get(`/chat/conversations/${conversationId}`)
     } catch (error: any) {
       console.error('Get conversation error:', error)
       ElMessage.error(error.message || 'Failed to load conversation')
@@ -124,17 +91,7 @@ export function useConversation() {
   const deleteConversation = async (conversationId: string) => {
     isLoading.value = true
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/chat/conversations/${conversationId}`,
-        {
-          method: 'DELETE',
-          headers: getAuthHeaders()
-        }
-      )
-
-      if (!response.ok) {
-        throw new Error('Failed to delete conversation')
-      }
+      await api.del(`/chat/conversations/${conversationId}`)
 
       ElMessage.success('Conversation deleted')
 

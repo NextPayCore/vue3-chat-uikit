@@ -1,15 +1,15 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useApi, type FriendshipListResponse } from './useApi'
 import type {
   IFriendship,
   IFriendUser,
   IFriendshipList,
+  IFriendshipListSimple,
   ISuggestedFriend,
   IFriendshipCheckResponse,
   FriendshipStatus
 } from '../interfaces/friendship.interface'
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 
 // State
 const friendsList = ref<IFriendUser[]>([])
@@ -20,11 +20,41 @@ const suggestedFriends = ref<ISuggestedFriend[]>([])
 const isLoading = ref(false)
 
 export function useFriendship() {
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('auth_token')
-    return {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` })
+  const api = useApi()
+
+  // Helper: Fetch user details from user IDs
+  const fetchUserDetails = async (userIds: string[]): Promise<IFriendUser[]> => {
+    try {
+      // Fetch all user details in parallel
+      const userDetails = await Promise.all(
+        userIds.map(async (id) => {
+          try {
+            const user = await api.getUserById(id)
+            return {
+              id: user.id,
+              name: user.name,
+              email: user.email || '',
+              avatarUrl: user.avatarUrl,
+              isOnline: user.isOnline || false,
+              lastSeen: user.lastActiveAt
+            }
+          } catch (error) {
+            console.error(`Failed to fetch user ${id}:`, error)
+            // Return mock data if fetch fails
+            return {
+              id,
+              name: `User ${id.substring(0, 8)}`,
+              email: '',
+              avatarUrl: `https://i.pravatar.cc/150?u=${id}`,
+              isOnline: false
+            }
+          }
+        })
+      )
+      return userDetails
+    } catch (error) {
+      console.error('Error fetching user details:', error)
+      return []
     }
   }
 
@@ -32,21 +62,44 @@ export function useFriendship() {
   const getFriendshipList = async () => {
     isLoading.value = true
     try {
-      const response = await fetch(`${apiBaseUrl}/friendship/list`, {
-        headers: getAuthHeaders()
-      })
+      // Call the API endpoint that returns just IDs
+      const data = await api.getFriendshipList()
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch friendship list')
+      console.log('📋 Friendship list response:', data)
+
+      // Fetch user details for friends (if we have any)
+      if (data.friends.length > 0) {
+        friendsList.value = await fetchUserDetails(data.friends)
+      } else {
+        friendsList.value = []
       }
 
-      const data: IFriendshipList = await response.json()
-      friendsList.value = data.friends
-      pendingRequests.value = data.pendingRequests
-      sentRequests.value = data.sentRequests
-      blockedUsers.value = data.blockedUsers
+      // Convert request IDs to mock objects (until backend provides full request details)
+      pendingRequests.value = data.pendingRequests.map((id, index) => ({
+        _id: id,
+        requesterId: id,
+        addresseeId: 'current-user',
+        status: 'pending' as FriendshipStatus,
+        message: 'Hi! Let\'s be friends!',
+        createdAt: new Date(Date.now() - Math.random() * 86400000 * 7),
+        updatedAt: new Date()
+      }))
 
-      return data
+      // TODO: When backend provides full request objects, use them directly
+      // pendingRequests.value = data.pendingRequests
+
+      sentRequests.value = []
+      blockedUsers.value = []
+
+      return {
+        friends: friendsList.value,
+        pendingRequests: pendingRequests.value,
+        sentRequests: sentRequests.value,
+        blockedUsers: blockedUsers.value,
+        totalFriends: data.totalFriends,
+        totalPending: data.totalPendingRequests,
+        totalBlocked: 0
+      }
     } catch (error: any) {
       console.error('Get friendship list error:', error)
       ElMessage.error(error.message || 'Failed to load friends')
@@ -60,18 +113,10 @@ export function useFriendship() {
   const sendFriendRequest = async (addresseeId: string, message?: string) => {
     isLoading.value = true
     try {
-      const response = await fetch(`${apiBaseUrl}/friendship/send-request`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ addresseeId, message })
+      const data = await api.post('/friendship/send-request', {
+        addresseeId,
+        message
       })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to send friend request')
-      }
-
-      const data = await response.json()
 
       ElMessage.success('Friend request sent successfully')
       await getFriendshipList() // Refresh list
@@ -93,18 +138,10 @@ export function useFriendship() {
   ) => {
     isLoading.value = true
     try {
-      const response = await fetch(`${apiBaseUrl}/friendship/respond-request`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ friendshipId, status })
+      const data = await api.post('/friendship/respond-request', {
+        friendshipId,
+        status
       })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to respond to request')
-      }
-
-      const data = await response.json()
 
       ElMessage.success(
         status === 'accepted' ? 'Friend request accepted' : 'Friend request declined'
@@ -125,18 +162,10 @@ export function useFriendship() {
   const blockUser = async (userId: string, reason?: string) => {
     isLoading.value = true
     try {
-      const response = await fetch(`${apiBaseUrl}/friendship/block`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ userId, reason })
+      const data = await api.post('/friendship/block', {
+        userId,
+        reason
       })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to block user')
-      }
-
-      const data = await response.json()
 
       ElMessage.success('User blocked successfully')
       await getFriendshipList() // Refresh list
@@ -155,17 +184,7 @@ export function useFriendship() {
   const unblockUser = async (userId: string) => {
     isLoading.value = true
     try {
-      const response = await fetch(`${apiBaseUrl}/friendship/unblock/${userId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to unblock user')
-      }
-
-      const data = await response.json()
+      const data = await api.del(`/friendship/unblock/${userId}`)
 
       ElMessage.success('User unblocked successfully')
       await getFriendshipList() // Refresh list
@@ -184,17 +203,7 @@ export function useFriendship() {
   const removeFriend = async (friendId: string) => {
     isLoading.value = true
     try {
-      const response = await fetch(`${apiBaseUrl}/friendship/remove/${friendId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to remove friend')
-      }
-
-      const data = await response.json()
+      const data = await api.del(`/friendship/remove/${friendId}`)
 
       ElMessage.success('Friend removed successfully')
       await getFriendshipList() // Refresh list
@@ -212,15 +221,7 @@ export function useFriendship() {
   // Check friendship status
   const checkFriendship = async (userId: string): Promise<IFriendshipCheckResponse> => {
     try {
-      const response = await fetch(`${apiBaseUrl}/friendship/check/${userId}`, {
-        headers: getAuthHeaders()
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to check friendship status')
-      }
-
-      return await response.json()
+      return await api.get(`/friendship/check/${userId}`)
     } catch (error: any) {
       console.error('Check friendship error:', error)
       throw error
@@ -231,15 +232,7 @@ export function useFriendship() {
   const getSuggestedFriends = async () => {
     isLoading.value = true
     try {
-      const response = await fetch(`${apiBaseUrl}/friendship/suggested-friends`, {
-        headers: getAuthHeaders()
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch suggested friends')
-      }
-
-      const data = await response.json()
+      const data = await api.get('/friendship/suggested-friends')
       suggestedFriends.value = data.suggestions || []
 
       return data

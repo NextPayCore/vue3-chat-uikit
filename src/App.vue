@@ -18,6 +18,19 @@
       />
     </el-drawer>
 
+    <!-- Friendship Manager Drawer -->
+    <el-drawer
+      v-model="showFriendshipDrawer"
+      title="Friends & Requests"
+      direction="rtl"
+      size="600px"
+    >
+      <FriendshipManager
+        @start-chat="handleStartChat"
+        @refresh="handleFriendshipRefresh"
+      />
+    </el-drawer>
+
     <div class="chat-container">
       <!-- Header -->
       <div class="chat-header">
@@ -35,14 +48,21 @@
               <span class="user-name">{{ authUser?.name }}</span>
 
               <!-- Search Friends Button -->
-              <el-button
-                type="primary"
-                size="small"
-                @click="showSearchDrawer = true"
+              <el-badge
+                :value="totalPendingRequests"
+                :hidden="!totalPendingRequests"
+                :max="99"
+                type="danger"
               >
-                <el-icon><UserFilled /></el-icon>
-                Find Friends
-              </el-button>
+                <el-button
+                  type="primary"
+                  size="small"
+                  @click="showFriendshipDrawer = true"
+                >
+                  <el-icon><UserFilled /></el-icon>
+                  Friends & Requests
+                </el-button>
+              </el-badge>
 
               <el-button
                 type="danger"
@@ -103,10 +123,13 @@ import ChatList from './components/ChatList.vue'
 import ChatInput from './components/ChatInput.vue'
 import LoginModal from './components/LoginModal.vue'
 import SearchFriends from './components/SearchFriends.vue'
+import FriendshipManager from './components/FriendshipManager.vue'
 import { useSocket } from './composables/useSocket'
 import { useAuth } from './composables/useAuth'
+import { useFriendship } from './composables/useFriendship'
 import type { IMessage } from './interfaces/message.interface'
 import type { IUploadedFile } from './interfaces/chatinput.interface'
+import type { IFriendUser } from './interfaces/friendship.interface'
 import { MessageStatusEnum } from './enums/message.enum'
 
 interface VoiceRecording {
@@ -128,14 +151,22 @@ const {
   signOut
 } = useAuth()
 
+// Friendship
+const {
+  totalPendingRequests,
+  getFriendshipList
+} = useFriendship()
+
 const showLoginModal = ref(!isAuthenticated.value)
 const showSearchDrawer = ref(false)
+const showFriendshipDrawer = ref(false)
 
 // Watch auth state to show/hide login modal
 watch(isAuthenticated, (newValue) => {
   if (!newValue) {
     showLoginModal.value = true
     showSearchDrawer.value = false // Close search when logged out
+    showFriendshipDrawer.value = false // Close friendship when logged out
   }
 })
 
@@ -301,6 +332,9 @@ const handleLoginSuccess = () => {
   console.log('✅ Login successful')
   showLoginModal.value = false
 
+  // Load friendship data
+  getFriendshipList()
+
   // Connect socket if enabled
   if (USE_SOCKET) {
     console.log('🔌 Connecting to socket server:', SOCKET_URL)
@@ -342,11 +376,16 @@ onMounted(() => {
   if (!isAuthenticated.value) {
     console.log('⚠️ User not authenticated, showing login modal')
     showLoginModal.value = true
-  } else if (USE_SOCKET) {
-    console.log('🔌 Connecting to socket server:', SOCKET_URL)
-    connect()
   } else {
-    console.log('⚠️ Socket disabled, using demo mode')
+    // Load friendship data
+    getFriendshipList()
+
+    if (USE_SOCKET) {
+      console.log('🔌 Connecting to socket server:', SOCKET_URL)
+      connect()
+    } else {
+      console.log('⚠️ Socket disabled, using demo mode')
+    }
   }
 })
 
@@ -532,6 +571,19 @@ const handleFriendRequestAccepted = (userId: string) => {
 const handleFriendRequestRejected = (userId: string) => {
   console.log('Friend request rejected:', userId)
   ElMessage.info('Friend request rejected')
+}
+
+// Friendship Manager handlers
+const handleStartChat = (friend: IFriendUser) => {
+  console.log('Starting chat with:', friend)
+  ElMessage.success(`Starting chat with ${friend.name}`)
+  // TODO: Open chat with this friend
+  showFriendshipDrawer.value = false
+}
+
+const handleFriendshipRefresh = () => {
+  console.log('Refreshing friendship data')
+  // The FriendshipManager will handle its own refresh
 }
 </script>
 

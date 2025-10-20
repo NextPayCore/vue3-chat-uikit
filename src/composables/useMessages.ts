@@ -1,7 +1,6 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:1200'
+import { useApi } from './useApi'
 
 // Types
 export interface IChatMessage {
@@ -53,13 +52,7 @@ const totalMessagesMap = ref<Map<string, number>>(new Map())
 const currentPageMap = ref<Map<string, number>>(new Map())
 
 export function useMessages() {
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('auth_token')
-    return {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` })
-    }
-  }
+  const api = useApi()
 
   // Get chat history
   const getChatHistory = async (
@@ -69,17 +62,9 @@ export function useMessages() {
   ): Promise<IMessageHistory | null> => {
     isLoadingMessages.value = true
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/chat/conversations/${conversationId}/messages?page=${page}&limit=${limit}`,
-        { headers: getAuthHeaders() }
+      const data: IMessageHistory = await api.get(
+        `/chat/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
       )
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to load messages')
-      }
-
-      const data: IMessageHistory = await response.json()
 
       // Store messages
       if (!messages.value.has(conversationId)) {
@@ -113,27 +98,17 @@ export function useMessages() {
     payload: ISendMessagePayload
   ): Promise<IChatMessage | null> => {
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/chat/conversations/${conversationId}/messages`,
+      const data = await api.post(
+        `/chat/conversations/${conversationId}/messages`,
         {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            content: payload.content,
-            type: payload.type || 'text',
-            ...(payload.fileUrl && { fileUrl: payload.fileUrl }),
-            ...(payload.fileName && { fileName: payload.fileName }),
-            ...(payload.replyTo && { replyTo: payload.replyTo })
-          })
+          content: payload.content,
+          type: payload.type || 'text',
+          ...(payload.fileUrl && { fileUrl: payload.fileUrl }),
+          ...(payload.fileName && { fileName: payload.fileName }),
+          ...(payload.replyTo && { replyTo: payload.replyTo })
         }
       )
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to send message')
-      }
-
-      const data = await response.json()
       const newMessage = data.message as IChatMessage
 
       // Add to local messages
@@ -153,21 +128,11 @@ export function useMessages() {
     content: string
   ): Promise<boolean> => {
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/chat/messages/${messageId}`,
-        {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ content })
-        }
+      const data = await api.put(
+        `/chat/messages/${messageId}`,
+        { content }
       )
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to edit message')
-      }
-
-      const data = await response.json()
       const updatedMessage = data.message as IChatMessage
 
       // Update in local messages
@@ -185,18 +150,7 @@ export function useMessages() {
   // Delete message
   const deleteMessage = async (messageId: string): Promise<boolean> => {
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/chat/messages/${messageId}`,
-        {
-          method: 'DELETE',
-          headers: getAuthHeaders()
-        }
-      )
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to delete message')
-      }
+      await api.del(`/chat/messages/${messageId}`)
 
       // Remove from local messages
       removeMessage(messageId)
@@ -213,19 +167,7 @@ export function useMessages() {
   // Mark message as read
   const markMessageAsRead = async (messageId: string): Promise<boolean> => {
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/chat/messages/${messageId}/read`,
-        {
-          method: 'PUT',
-          headers: getAuthHeaders()
-        }
-      )
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to mark message as read')
-      }
-
+      await api.put(`/chat/messages/${messageId}/read`)
       return true
     } catch (error: any) {
       console.error('Mark message as read error:', error)
@@ -236,18 +178,7 @@ export function useMessages() {
   // Mark all messages in conversation as read
   const markAllAsRead = async (conversationId: string): Promise<boolean> => {
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/chat/conversations/${conversationId}/read`,
-        {
-          method: 'PUT',
-          headers: getAuthHeaders()
-        }
-      )
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Failed to mark messages as read')
-      }
+      await api.put(`/chat/conversations/${conversationId}/read`)
 
       // Update local messages readBy
       const conversationMessages = messages.value.get(conversationId)

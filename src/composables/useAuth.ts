@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useApi } from './useApi'
 
 export interface AuthUser {
   id: string
@@ -12,6 +13,7 @@ export interface AuthUser {
 
 const currentUser = ref<AuthUser | null>(null)
 const isLoading = ref(false)
+const api = useApi()
 
 // Load user from localStorage on init
 const savedUser = localStorage.getItem('auth_user')
@@ -42,38 +44,18 @@ export function useAuth() {
        if (response.access_token) {
         console.log('✅ Received authorization code, sending to backend...')
 
-        // Get API base URL from env or use same origin
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
-        const loginUrl = `${apiBaseUrl}/api/auth/social-login`
-
-        // Send authorization code to backend for processing
-        const backendResponse = await fetch(loginUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            accessToken: response.access_token,
-            type: 'google',
-          })
-        })
-
-        if (!backendResponse.ok) {
-          const errorData = await backendResponse.json().catch(() => ({}))
-          throw new Error(errorData.message || `Backend login failed: ${backendResponse.status}`)
-        }
-
-        const backendData = await backendResponse.json()
+        // Use useApi to call backend
+        const backendData = await api.socialLogin('google', response.access_token)
         console.log('✅ Backend login successful:', backendData)
 
         // Extract user info from backend response
         user = {
-          id: backendData.user?.id || backendData.id || 'user-' + Date.now(),
-          name: backendData.user?.name || backendData.name || 'Google User',
-          email: backendData.user?.email || backendData.email || '',
-          avatarUrl: backendData.user?.avatarUrl || backendData.user?.picture || backendData.picture || '',
+          id: backendData.user?.id || 'user-' + Date.now(),
+          name: backendData.user?.name || 'Google User',
+          email: backendData.user?.email || '',
+          avatarUrl: backendData.user?.avatarUrl || '',
           provider: 'google',
-          token: backendData.token || backendData.accessToken // Save JWT token if backend provides
+          token: backendData.token // Save JWT token from backend
         }
 
         // Save token to localStorage if provided
@@ -135,9 +117,18 @@ export function useAuth() {
   }
 
   // Sign out
-  const signOut = () => {
+  const signOut = async () => {
+    try {
+      // Call logout API
+      await api.logout()
+    } catch (error) {
+      console.error('Logout error:', error)
+      // Continue with local cleanup even if API call fails
+    }
+
     currentUser.value = null
     localStorage.removeItem('auth_user')
+    localStorage.removeItem('auth_token')
 
     ElMessage.success({
       message: 'Successfully signed out',

@@ -36,6 +36,14 @@ export interface IFriendshipList {
   totalBlocked: number
 }
 
+// Response from /api/friendship/list endpoint (simplified version with just IDs)
+export interface IFriendshipListSimple {
+  friends: string[]  // Array of friend user IDs
+  totalFriends: number
+  pendingRequests: string[]  // Array of pending request IDs
+  totalPendingRequests: number
+}
+
 export interface ISuggestedFriend extends IFriendUser {
   reason?: string
   mutualFriends?: string[]

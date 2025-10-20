@@ -26,6 +26,13 @@ export interface PaginatedResponse<T = any> {
   totalPages: number
 }
 
+export interface FriendshipListResponse {
+  friends: string[]
+  totalFriends: number
+  pendingRequests: string[]
+  totalPendingRequests: number
+}
+
 export function useApi(config?: ApiConfig) {
   const isLoading = ref(false)
   const error = ref<Error | null>(null)
@@ -261,6 +268,11 @@ export function useApi(config?: ApiConfig) {
 
   // === FRIENDSHIP APIs ===
 
+  // Get friendship list (friends and pending requests)
+  const getFriendshipList = async (): Promise<FriendshipListResponse> => {
+    return get<FriendshipListResponse>('/api/friendship/list')
+  }
+
   // Get all friends
   const getFriends = async (page = 1, pageSize = 50): Promise<PaginatedResponse<IFriendship>> => {
     return get<PaginatedResponse<IFriendship>>(`/api/friends?page=${page}&pageSize=${pageSize}`)
@@ -441,6 +453,7 @@ export function useApi(config?: ApiConfig) {
     markMessagesAsDelivered,
 
     // Friendship APIs
+    getFriendshipList,
     getFriends,
     getFriendRequests,
     sendFriendRequest,
