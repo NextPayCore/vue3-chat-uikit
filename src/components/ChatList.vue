@@ -30,14 +30,14 @@
         :key="message.id"
         :class="[
           'message-wrapper',
-          message.role === 'user' ? 'user-message' : 'assistant-message'
+          message.sender.id === currentUser?.id ? 'user-message' : 'assistant-message'
         ]"
       >
         <div class="message-content" :class="[
-          message.role === 'user' ? 'message-content-right' : ''
+          message.sender.id === currentUser?.id ? 'message-content-right' : ''
         ]"    >
           <!-- Avatar for assistant messages -->
-          <div v-if="message.role === 'assistant'" class="message-avatar">
+          <div v-if="message.sender.id === 'assistant'" class="message-avatar">
             <div class="avatar-circle">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="gpt-icon">
                 <path d="M8.18 1.71a6 6 0 0 0-5.94 6.53 2.5 2.5 0 0 1-.63 2.42L.5 11.5a.5.5 0 0 0 .35.85h14.3a.5.5 0 0 0 .35-.85l-1.11-.84a2.5 2.5 0 0 1-.63-2.42A6 6 0 0 0 8.18 1.71z" fill="white"/>
@@ -157,6 +157,7 @@ import { Document, Microphone, CopyDocument, ChatLineRound } from '@element-plus
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import type { IMessage } from '../interfaces/message.interface'
+import { useAuth } from '@/composables/useAuth'
 
 // Initialize markdown parser with options
 const md: MarkdownIt = new MarkdownIt({
@@ -204,7 +205,8 @@ const emit = defineEmits<ChatListEmits>()
 const messagesContainer = ref<HTMLElement>()
 const selectedText = ref('')
 const selectedMessageId = ref('')
-
+const { currentUser } = useAuth()
+console.log(currentUser)
 // Token quota computed properties
 const quotaPercentage = computed(() => {
   if (!props.tokenQuota) return 0

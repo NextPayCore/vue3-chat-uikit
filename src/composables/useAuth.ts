@@ -88,7 +88,16 @@ export function useAuth() {
 
       // Save to localStorage
       localStorage.setItem('user', JSON.stringify(user))
-      localStorage.setItem('accessToken', user.token || '')
+
+      // Only save token if it exists and is not empty
+      if (user.token && user.token.trim()) {
+        localStorage.setItem('accessToken', user.token)
+        console.log('✅ Token saved to localStorage')
+      } else {
+        console.warn('⚠️ No token received from backend, removing any existing token')
+        localStorage.removeItem('accessToken')
+      }
+
       ElMessage.success({
         message: `Welcome back, ${user.name}!`,
         duration: 3000
