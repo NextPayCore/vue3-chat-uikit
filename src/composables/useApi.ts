@@ -134,10 +134,10 @@ export function useApi(config?: ApiConfig) {
           localStorage.removeItem('auth_token')
           localStorage.removeItem('auth_user')
 
-          // Reload page to show login modal
-          setTimeout(() => {
-            window.location.reload()
-          }, 1000)
+          // // Reload page to show login modal
+          // setTimeout(() => {
+          //   window.location.reload()
+          // }, 1000)
         }
 
         throw new Error(errorMessage)
