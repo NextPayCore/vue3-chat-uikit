@@ -27,6 +27,7 @@ interface SocketEvents {
   onConversationUpdated?: (data: { conversationId: string; lastMessage?: IMessage }) => void
   onUserOnline?: (userId: string) => void
   onUserOffline?: (userId: string) => void
+  onOnlineUsers?: (userIds: string[]) => void // Initial online users list
   currentUserId?: string // Add current user ID for message normalization
 }
 
@@ -146,11 +147,45 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
     })
 
     socket.value.on('user:online', (userId: string) => {
+      console.log('🟢 Received user:online event:', userId)
       events?.onUserOnline?.(userId)
     })
 
     socket.value.on('user:offline', (userId: string) => {
+      console.log('⚪ Received user:offline event:', userId)
       events?.onUserOffline?.(userId)
+    })
+
+    // Also listen for alternative event names (in case backend uses different format)
+    socket.value.on('user_online', (userId: string) => {
+      console.log('🟢 Received user_online event:', userId)
+      events?.onUserOnline?.(userId)
+    })
+
+    socket.value.on('user_offline', (userId: string) => {
+      console.log('⚪ Received user_offline event:', userId)
+      events?.onUserOffline?.(userId)
+    })
+
+    socket.value.on('online', (userId: string) => {
+      console.log('🟢 Received online event:', userId)
+      events?.onUserOnline?.(userId)
+    })
+
+    socket.value.on('offline', (userId: string) => {
+      console.log('⚪ Received offline event:', userId)
+      events?.onUserOffline?.(userId)
+    })
+
+    // Listen for initial online users list
+    socket.value.on('online_users', (userIds: string[]) => {
+      console.log('👥 Received online_users list:', userIds)
+      events?.onOnlineUsers?.(userIds)
+    })
+
+    socket.value.on('users_online', (userIds: string[]) => {
+      console.log('👥 Received users_online list:', userIds)
+      events?.onOnlineUsers?.(userIds)
     })
   }
 

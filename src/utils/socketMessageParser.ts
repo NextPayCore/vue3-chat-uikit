@@ -114,7 +114,7 @@ export function normalizeSocketMessage(
     metadata: {
       isEdited: socketMessage.isEdited || false,
       isDeleted: socketMessage.isDeleted || false,
-      conversationId: socketMessage.conversationId
+      conversationId: socketMessage.conversationId // IMPORTANT: Include conversationId
     },
     ...(replyToMessage && { replyTo: replyToMessage })
   }
@@ -180,31 +180,39 @@ export function normalizeSocketConversation(socketConversation: any) {
 }
 
 /**
- * Enrich message with user cache data
+ * Convert IMessage to IChatMessage format
  *
- * Updates sender information with cached user details.
+ * Converts normalized socket message to backend IChatMessage format
+ * for use with useMessages composable.
  *
- * @param message - Message to enrich
- * @param userCache - Map of cached user data
- * @returns Enriched message
+ * @param message - Normalized IMessage from socket
+ * @param conversationId - Conversation ID
+ * @returns IChatMessage format
  */
-export function enrichMessageWithCache(
+export function convertToIChatMessage(
   message: IMessage,
-  userCache: Map<string, any>
-): IMessage {
-  const cachedUser = userCache.get(message.sender.id)
-
-  if (!cachedUser) {
-    return message
-  }
-
+  conversationId: string
+): any {
   return {
-    ...message,
+    id: message.id,
+    conversationId,
     sender: {
-      ...message.sender,
-      name: cachedUser.name || message.sender.name,
-      avatarUrl: cachedUser.avatarUrl || cachedUser.avatar || message.sender.avatarUrl,
-      isOnline: cachedUser.isOnline ?? message.sender.isOnline
-    }
+      id: message.sender.id,
+      name: message.sender.name,
+      email: message.sender.email || '',
+      avatar: message.sender.avatarUrl || ''
+    },
+    content: message.content,
+    type: message.type || 'text',
+    fileUrl: message.fileUrl,
+    fileName: message.fileName,
+    readBy: [], // Will be updated later
+    replyTo: message.replyTo?.id,
+    replyToMessage: message.replyTo ? convertToIChatMessage(message.replyTo, conversationId) : undefined,
+    isEdited: message.metadata?.isEdited || false,
+    isDeleted: message.metadata?.isDeleted || false,
+    createdAt: message.createdAt,
+    updatedAt: message.updatedAt
   }
 }
+

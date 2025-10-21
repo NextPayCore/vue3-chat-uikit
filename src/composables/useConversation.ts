@@ -179,6 +179,28 @@ export function useConversation() {
     activeConversation.value = conversation
   }
 
+  // Update conversation's last message (for socket events)
+  const updateConversationLastMessage = (
+    conversationId: string,
+    lastMessage: any,
+    lastMessageAt?: Date
+  ) => {
+    const conversation = conversations.value.find(c => c._id === conversationId)
+    if (conversation) {
+      conversation.lastMessage = lastMessage
+      conversation.lastMessageAt = lastMessageAt || new Date()
+
+      // Move to top of list (sort by lastMessageAt)
+      conversations.value.sort((a, b) => {
+        const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
+        const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0
+        return timeB - timeA
+      })
+
+      console.log('✅ Conversation last message updated:', conversationId)
+    }
+  }
+
   // Computed
   const privateConversations = computed(() =>
     conversations.value.filter(c => c.type === 'private')
@@ -208,6 +230,7 @@ export function useConversation() {
     getConversation,
     deleteConversation,
     setActiveConversation,
-    enrichConversationsWithUserDetails
+    enrichConversationsWithUserDetails,
+    updateConversationLastMessage
   }
 }
