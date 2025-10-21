@@ -1,12 +1,20 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useApi } from './useApi'
+import { parseReplyToId, resolveReplyToReferences } from '../utils/messageParser'
 
 // Types
 export interface IChatMessage {
   id: string
   conversationId: string
-  senderId: string
+  sender: {
+    id: string
+    name: string
+    email: string
+    avatar?: string
+  }
+  // Legacy fields (deprecated, use sender object instead)
+  senderId?: string
   senderName?: string
   senderAvatar?: string
   content: string
@@ -14,8 +22,8 @@ export interface IChatMessage {
   fileUrl?: string
   fileName?: string
   readBy: string[]
-  replyTo?: string
-  replyToMessage?: IChatMessage
+  replyTo?: string | any // Backend returns string (MongoDB toString) or object ID
+  replyToMessage?: IChatMessage // Populated reply message (resolved locally)
   isEdited: boolean
   isDeleted: boolean
   editedAt?: Date
@@ -66,6 +74,9 @@ export function useMessages() {
         `/api/chat/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
       )
 
+      // Process messages and resolve replyTo references
+      const processedMessages = resolveReplyToReferences(data.messages)
+
       // Store messages
       if (!messages.value.has(conversationId)) {
         messages.value.set(conversationId, [])
@@ -73,10 +84,10 @@ export function useMessages() {
 
       // If it's page 1, replace all messages, otherwise append
       if (page === 1) {
-        messages.value.set(conversationId, data.messages)
+        messages.value.set(conversationId, processedMessages)
       } else {
         const existing = messages.value.get(conversationId) || []
-        messages.value.set(conversationId, [...existing, ...data.messages])
+        messages.value.set(conversationId, [...existing, ...processedMessages])
       }
 
       totalMessagesMap.value.set(conversationId, data.totalMessages)
@@ -264,7 +275,7 @@ export function useMessages() {
     if (!currentUserId) return 0
 
     return conversationMessages.filter(msg =>
-      msg.senderId !== currentUserId && !msg.readBy.includes(currentUserId)
+      msg.sender.id !== currentUserId && !msg.readBy.includes(currentUserId)
     ).length
   }
 
