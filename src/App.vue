@@ -215,6 +215,7 @@ const {
 
 // Friendship
 const {
+  friendsList,
   totalPendingRequests,
   getFriendshipList
 } = useFriendship()
@@ -225,7 +226,8 @@ const {
   setActiveConversation,
   getConversations,
   createConversation,
-  updateConversationLastMessage
+  updateConversationLastMessage,
+  enrichConversationsWithUserDetails
 } = useConversation()
 
 // Messages
@@ -546,15 +548,20 @@ const connectionStatusClass = computed(() => {
 })
 
 // Auth handlers
-const handleLoginSuccess = () => {
+const handleLoginSuccess = async () => {
   console.log('✅ Login successful')
   showLoginModal.value = false
 
   // Load data
-  Promise.all([
+  await Promise.all([
     getFriendshipList(),
     getConversations()
   ])
+
+  // Enrich conversations with friends data
+  const friendsMap = new Map(friendsList.value.map((f: any) => [f.id, f]))
+  enrichConversationsWithUserDetails(friendsMap)
+  console.log('✅ Enriched conversations with friends data')
 
   // Connect socket if enabled
   if (USE_SOCKET) {
@@ -791,6 +798,11 @@ onMounted(async () => {
         getFriendshipList(),
         getConversations()
       ])
+
+      // Enrich conversations with friends data
+      const friendsMap = new Map(friendsList.value.map((f: any) => [f.id, f]))
+      enrichConversationsWithUserDetails(friendsMap)
+      console.log('✅ Enriched conversations with friends data on mount')
     } catch (error) {
       console.error('Failed to load data:', error)
       // If authentication fails, show login modal

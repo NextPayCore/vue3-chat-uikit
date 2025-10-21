@@ -8,6 +8,54 @@
 import type { IUser } from '../interfaces/user.interface'
 
 /**
+ * Parse createdBy field from MongoDB toString format
+ *
+ * Handles format: "{\n  _id: new ObjectId('...'),\n  name: '...',\n  email: '...',\n  avatar: '...'\n}"
+ *
+ * @param createdByString - The createdBy string from backend
+ * @returns Parsed user object or null
+ */
+export function parseCreatedByUser(createdByString: string | null | undefined): IUser | null {
+  if (!createdByString || typeof createdByString !== 'string') {
+    return null
+  }
+
+  try {
+    // Extract _id
+    const idMatch = createdByString.match(/_id:\s*new ObjectId\('([a-f0-9]{24})'\)/i)
+    const id = idMatch ? idMatch[1] : null
+
+    // Extract name
+    const nameMatch = createdByString.match(/name:\s*'([^']+)'/i)
+    const name = nameMatch ? nameMatch[1] : null
+
+    // Extract email
+    const emailMatch = createdByString.match(/email:\s*'([^']+)'/i)
+    const email = emailMatch ? emailMatch[1] : null
+
+    // Extract avatar
+    const avatarMatch = createdByString.match(/avatar:\s*'([^']+)'/i)
+    const avatar = avatarMatch ? avatarMatch[1] : null
+
+    if (!id || !name) {
+      console.warn('⚠️ Could not parse createdBy - missing id or name')
+      return null
+    }
+
+    return {
+      id,
+      name,
+      email: email || '',
+      avatarUrl: avatar || '',
+      isOnline: false
+    }
+  } catch (error) {
+    console.error('❌ Error parsing createdBy:', error)
+    return null
+  }
+}
+
+/**
  * Parse participants field from conversation API response
  *
  * Handles two formats:

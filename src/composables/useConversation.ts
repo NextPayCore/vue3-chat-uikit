@@ -9,7 +9,8 @@ import type {
 import {
   parseParticipants,
   enrichUsersWithCache,
-  extractParticipantIds
+  extractParticipantIds,
+  parseCreatedByUser
 } from '../utils/conversationParser'
 
 // State
@@ -43,6 +44,7 @@ export function useConversation() {
       const data = await api.get(
         `/api/chat/conversations?page=${page}&limit=${limit}`
       )
+      console.log('✅ Fetched conversations data:', data);
 
       // Handle both response formats:
       // 1. Array format: [{...}, {...}] (current backend)
@@ -56,7 +58,71 @@ export function useConversation() {
       }
       const adaptedConversations = conversationsList.map((conv: any) => {
         // Parse participants using utility function
-        const participantUsers = parseParticipants(conv.participants || [])
+        let participantUsers = parseParticipants(conv.participants || [])
+
+        // Parse createdBy from MongoDB toString format
+        const createdByUser = typeof conv.createdBy === 'string'
+          ? parseCreatedByUser(conv.createdBy)
+          : null
+
+        // Enrich participants for private chats using multiple sources
+        if (conv.type === 'private') {
+          const participantsMap = new Map<string, any>()
+
+          // 1. Start with ALL participant IDs from backend (ensures we have both users)
+          conv.participants.forEach((id: string) => {
+            if (!participantsMap.has(id)) {
+              // Create placeholder with ID
+              participantsMap.set(id, {
+                id,
+                name: id.substring(0, 8) + '...',
+                email: '',
+                avatarUrl: '',
+                isOnline: false
+              })
+            }
+          })
+
+          // 2. Enrich with lastMessage.sender (might be current user or other user)
+          if (conv.lastMessage?.sender?.id) {
+            participantsMap.set(conv.lastMessage.sender.id, {
+              id: conv.lastMessage.sender.id,
+              name: conv.lastMessage.sender.name,
+              email: conv.lastMessage.sender.email || '',
+              avatarUrl: conv.lastMessage.sender.avatar || '',
+              isOnline: false
+            })
+          }
+
+          // 3. Enrich with createdBy (might be current user or other user)
+          if (createdByUser && !participantsMap.has(createdByUser.id)) {
+            participantsMap.set(createdByUser.id, createdByUser)
+          }
+
+          // 4. Enrich from userCache (friends list, etc.)
+          conv.participants.forEach((id: string) => {
+            const cachedUser = userCache.value.get(id)
+            if (cachedUser) {
+              participantsMap.set(id, {
+                id,
+                name: cachedUser.name || cachedUser.username || participantsMap.get(id)?.name,
+                email: cachedUser.email || participantsMap.get(id)?.email || '',
+                avatarUrl: cachedUser.avatarUrl || cachedUser.avatar || participantsMap.get(id)?.avatarUrl || '',
+                isOnline: cachedUser.isOnline || false
+              })
+            }
+          })
+
+          // Convert back to array
+          participantUsers = Array.from(participantsMap.values())
+
+          // Log for debugging
+          console.log(`📋 Conversation ${conv.id} participants:`, {
+            originalIds: conv.participants,
+            enrichedCount: participantUsers.length,
+            participants: participantUsers.map(p => ({ id: p.id, name: p.name }))
+          })
+        }
 
         return {
           _id: conv.id || conv._id,
@@ -66,7 +132,7 @@ export function useConversation() {
           avatar: conv.avatar,
           participants: participantUsers,
           participantIds: extractParticipantIds(conv.participants || []),
-          createdBy: typeof conv.createdBy === 'string' ? conv.createdBy : conv.createdBy?.id,
+          createdBy: conv.createdBy,
           lastMessage: conv.lastMessage,
           lastMessageAt: conv.lastMessageAt ? new Date(conv.lastMessageAt) : new Date(conv.updatedAt),
           unreadCount: conv.unreadCount || 0,
