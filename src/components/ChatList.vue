@@ -130,6 +130,14 @@
               <button @click="handleReply(message)" class="reply-btn" title="Reply">
                 <el-icon><ChatLineRound /></el-icon>
               </button>
+              <button
+                @click="handlePin(message)"
+                class="pin-btn"
+                :class="{ 'pinned': message.isPinned }"
+                :title="message.isPinned ? 'Unpin message' : 'Pin message'"
+              >
+                <el-icon><Flag /></el-icon>
+              </button>
             </div>
           </div>
 
@@ -153,7 +161,7 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, computed } from 'vue'
 import { ElIcon, ElMessage, ElProgress, ElAvatar } from 'element-plus'
-import { Document, Microphone, CopyDocument, ChatLineRound } from '@element-plus/icons-vue'
+import { Document, Microphone, CopyDocument, ChatLineRound, Flag } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import type { IMessage } from '../interfaces/message.interface'
@@ -192,6 +200,8 @@ interface ChatListProps {
 
 interface ChatListEmits {
   (e: 'reply', message: IMessage, selectedText?: string): void
+  (e: 'pin', message: IMessage): void
+  (e: 'unpin', messageId: string): void
 }
 
 const props = withDefaults(defineProps<ChatListProps>(), {
@@ -306,6 +316,14 @@ const handleReply = (message: IMessage) => {
 
 const handleReplyWithSelection = (message: IMessage, text: string) => {
   emit('reply', message, text)
+}
+
+const handlePin = (message: IMessage) => {
+  if (message.isPinned) {
+    emit('unpin', message.id)
+  } else {
+    emit('pin', message)
+  }
 }
 
 const copyImage = async (imageUrl: string) => {
@@ -778,6 +796,7 @@ defineExpose({
 
 .message-actions {
   display: flex;
+  gap: 6px;
   justify-content: flex-end;
   margin-top: 8px;
   opacity: 0;
@@ -788,7 +807,8 @@ defineExpose({
   opacity: 1;
 }
 
-.reply-btn {
+.reply-btn,
+.pin-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -803,20 +823,43 @@ defineExpose({
   font-size: 14px;
 }
 
-.reply-btn:hover {
+.reply-btn:hover,
+.pin-btn:hover {
   background: rgba(0, 0, 0, 0.1);
   color: #374151;
   transform: scale(1.05);
 }
 
-.user-message .reply-btn {
+.pin-btn.pinned {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.pin-btn.pinned:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
+  transform: scale(1.1);
+}
+
+.user-message .reply-btn,
+.user-message .pin-btn {
   background: rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.8);
 }
 
-.user-message .reply-btn:hover {
+.user-message .reply-btn:hover,
+.user-message .pin-btn:hover {
   background: rgba(255, 255, 255, 0.3);
   color: white;
+}
+
+.user-message .pin-btn.pinned {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.user-message .pin-btn.pinned:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
 }
 
 .message-voice {

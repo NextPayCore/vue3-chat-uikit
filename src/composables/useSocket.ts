@@ -2,6 +2,12 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { io, Socket } from 'socket.io-client'
 import type { IMessage } from '../interfaces/message.interface'
 import type { IConversation } from '../interfaces/conversation.interface'
+import type {
+  IMessagePinnedEvent,
+  IMessageUnpinnedEvent,
+  IPinnedMessageReorderedEvent,
+  IConversationPinnedMessages
+} from '../interfaces/pin.interface'
 import { normalizeSocketMessage, normalizeSocketConversation } from '../utils/socketMessageParser'
 
 interface SocketConfig {
@@ -28,6 +34,11 @@ interface SocketEvents {
   onUserOnline?: (userId: string) => void
   onUserOffline?: (userId: string) => void
   onOnlineUsers?: (userIds: string[]) => void // Initial online users list
+  // Pin message events
+  onMessagePinned?: (data: IMessagePinnedEvent) => void
+  onMessageUnpinned?: (data: IMessageUnpinnedEvent) => void
+  onPinnedMessageReordered?: (data: IPinnedMessageReorderedEvent) => void
+  onPinnedMessagesResponse?: (data: IConversationPinnedMessages) => void
   currentUserId?: string // Add current user ID for message normalization
 }
 
@@ -187,6 +198,27 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
       console.log('👥 Received users_online list:', userIds)
       events?.onOnlineUsers?.(userIds)
     })
+
+    // Pin message events
+    socket.value.on('message_pinned', (data: IMessagePinnedEvent) => {
+      console.log('📌 Received message_pinned event:', data)
+      events?.onMessagePinned?.(data)
+    })
+
+    socket.value.on('message_unpinned', (data: IMessageUnpinnedEvent) => {
+      console.log('📌 Received message_unpinned event:', data)
+      events?.onMessageUnpinned?.(data)
+    })
+
+    socket.value.on('pinned_message_reordered', (data: IPinnedMessageReorderedEvent) => {
+      console.log('📌 Received pinned_message_reordered event:', data)
+      events?.onPinnedMessageReordered?.(data)
+    })
+
+    socket.value.on('pinned_messages_response', (data: IConversationPinnedMessages) => {
+      console.log('📌 Received pinned_messages_response:', data)
+      events?.onPinnedMessagesResponse?.(data)
+    })
   }
 
   // Send message via socket (following Chat API docs)
@@ -246,6 +278,54 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
     socket.value.emit('leave_conversation', { conversationId })
   }
 
+  // Pin message via socket
+  const pinMessage = (messageId: string) => {
+    if (!socket.value?.connected) {
+      console.error('Socket not connected')
+      return false
+    }
+
+    console.log('📌 Emitting pin_message:', { messageId })
+    socket.value.emit('pin_message', { messageId })
+    return true
+  }
+
+  // Unpin message via socket
+  const unpinMessage = (messageId: string) => {
+    if (!socket.value?.connected) {
+      console.error('Socket not connected')
+      return false
+    }
+
+    console.log('📌 Emitting unpin_message:', { messageId })
+    socket.value.emit('unpin_message', { messageId })
+    return true
+  }
+
+  // Reorder pinned message via socket
+  const reorderPinnedMessage = (messageId: string, newOrder: number) => {
+    if (!socket.value?.connected) {
+      console.error('Socket not connected')
+      return false
+    }
+
+    console.log('📌 Emitting reorder_pinned_message:', { messageId, newOrder })
+    socket.value.emit('reorder_pinned_message', { messageId, newOrder })
+    return true
+  }
+
+  // Get pinned messages via socket
+  const getPinnedMessages = (conversationId: string) => {
+    if (!socket.value?.connected) {
+      console.error('Socket not connected')
+      return false
+    }
+
+    console.log('📌 Emitting get_pinned_messages:', { conversationId })
+    socket.value.emit('get_pinned_messages', { conversationId })
+    return true
+  }
+
   // Emit custom event
   const emit = (event: string, data?: any) => {
     if (!socket.value?.connected) {
@@ -293,6 +373,10 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
     markAsDelivered,
     joinConversation,
     leaveConversation,
+    pinMessage,
+    unpinMessage,
+    reorderPinnedMessage,
+    getPinnedMessages,
     emit,
     on,
     off,

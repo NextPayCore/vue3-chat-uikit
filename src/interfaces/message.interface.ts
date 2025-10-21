@@ -48,6 +48,10 @@ export interface IMessage {
   avatar?: string
   metadata?: Record<string, any>
   selectedText?: string
+  // Pin message fields
+  isPinned?: boolean
+  pinnedBy?: string
+  pinnedAt?: Date
 }
 
 export interface IAttachment {

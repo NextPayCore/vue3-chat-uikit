@@ -122,11 +122,23 @@
             </div>
 
             <!-- Chat messages area -->
+            <!-- Pinned Messages -->
+            <PinnedMessages
+              v-if="activeConversation && currentPinnedMessages.length > 0"
+              :pinned-messages="currentPinnedMessages"
+              :conversation-id="activeConversation._id"
+              @unpin="handleUnpinMessage"
+              @reorder="handleReorderPinnedMessage"
+              @scroll-to="handleScrollToMessage"
+            />
+
             <ChatList
               :messages="currentMessages"
               :auto-scroll="true"
               @message-click="handleMessageClick"
               @reply="handleReply"
+              @pin="handlePinMessage"
+              @unpin="handleUnpinMessage"
             />
 
             <!-- Input area -->
@@ -168,11 +180,13 @@ import LoginModal from './components/LoginModal.vue'
 import SearchFriends from './components/SearchFriends.vue'
 import FriendshipManager from './components/FriendshipManager.vue'
 import ConversationList from './components/ConversationList.vue'
+import PinnedMessages from './components/PinnedMessages.vue'
 import { useSocket } from './composables/useSocket'
 import { useAuth } from './composables/useAuth'
 import { useFriendship } from './composables/useFriendship'
 import { useConversation } from './composables/useConversation'
 import { useMessages } from './composables/useMessages'
+import { usePinMessage } from './composables/usePinMessage'
 import { convertToIChatMessage } from './utils/socketMessageParser'
 import type { IMessage } from './interfaces/message.interface'
 import type { IUploadedFile } from './interfaces/chatinput.interface'
@@ -224,6 +238,19 @@ const {
   clearMessages
 } = useMessages()
 
+// Pin Messages
+const {
+  pinnedMessages,
+  pinMessage,
+  unpinMessage,
+  getPinnedMessages,
+  reorderPinnedMessage,
+  getPinnedMessagesFromCache,
+  addPinnedMessage,
+  removePinnedMessage,
+  updatePinnedMessageOrder
+} = usePinMessage()
+
 const showLoginModal = ref(!isAuthenticated.value)
 const showSearchDrawer = ref(false)
 const showFriendshipDrawer = ref(false)
@@ -243,10 +270,20 @@ const typingUsers = ref<string[]>([])
 const onlineUsers = ref<Set<string>>(new Set())
 
 // Computed
+const currentPinnedMessages = computed(() => {
+  if (!activeConversation.value) return []
+  return getPinnedMessagesFromCache(activeConversation.value._id)
+})
+
 const currentMessages = computed((): IMessage[] => {
   if (!activeConversation.value) return []
 
   const chatMessages = getMessages(activeConversation.value._id)
+
+  // Create a Set of pinned message IDs for O(1) lookup
+  const pinnedMessageIds = new Set(
+    currentPinnedMessages.value.map(pm => pm.message.id)
+  )
 
   // Convert IChatMessage to IMessage for the ChatList component
   return chatMessages.map(msg => ({
@@ -267,6 +304,8 @@ const currentMessages = computed((): IMessage[] => {
     type: msg.type === 'image' ? 'image' : msg.type === 'file' ? 'text' : 'text',
     createdAt: new Date(msg.createdAt),
     updatedAt: new Date(msg.updatedAt),
+    // Sync isPinned status from pinnedMessages cache
+    isPinned: pinnedMessageIds.has(msg.id),
     metadata: {
       isEdited: msg.isEdited,
       isDeleted: msg.isDeleted,
@@ -467,6 +506,28 @@ const {
         onlineUsers.value.add(userId)
       })
       console.log('✅ Online users initialized:', Array.from(onlineUsers.value))
+    },
+    // Pin message socket events
+    onMessagePinned: (data: any) => {
+      console.log('📌 Message pinned:', data)
+      if (activeConversation.value && data.conversationId === activeConversation.value._id) {
+        // Reload pinned messages
+        getPinnedMessages(data.conversationId)
+      }
+    },
+    onMessageUnpinned: (data: any) => {
+      console.log('📌 Message unpinned:', data)
+      if (activeConversation.value && data.conversationId === activeConversation.value._id) {
+        // Remove from cache
+        removePinnedMessage(data.conversationId, data.messageId)
+      }
+    },
+    onPinnedMessageReordered: (data: any) => {
+      console.log('📌 Pinned message reordered:', data)
+      if (activeConversation.value && data.conversationId === activeConversation.value._id) {
+        // Reload pinned messages
+        getPinnedMessages(data.conversationId)
+      }
     }
   }
 )
@@ -538,6 +599,9 @@ const handleSelectConversation = async (conversation: IConversation) => {
   try {
     await getChatHistory(conversation._id, 1, 50)
 
+    // Load pinned messages
+    await getPinnedMessages(conversation._id)
+
     // Join conversation via socket
     if (USE_SOCKET && isConnected.value) {
       joinConversation(conversation._id)
@@ -552,6 +616,58 @@ const handleSelectConversation = async (conversation: IConversation) => {
     console.error('Failed to load conversation:', error)
   } finally {
     isLoading.value = false
+  }
+}
+
+// Pin message handlers
+const handlePinMessage = async (message: IMessage) => {
+  if (!activeConversation.value) return
+
+  const success = await pinMessage(message.id)
+  if (success) {
+    // Optimistic update: Add to cache immediately
+    const pinnedMessage = {
+      id: `pin_${message.id}_${Date.now()}`,
+      message: message,
+      pinnedBy: authUser.value?.id || '',
+      pinnedAt: new Date(),
+      order: currentPinnedMessages.value.length,
+      conversationId: activeConversation.value._id
+    }
+    addPinnedMessage(activeConversation.value._id, pinnedMessage)
+  }
+}
+
+const handleUnpinMessage = async (messageId: string) => {
+  if (!activeConversation.value) return
+
+  const success = await unpinMessage(messageId)
+  if (success) {
+    // Optimistic update: Remove from cache immediately
+    removePinnedMessage(activeConversation.value._id, messageId)
+  }
+}
+
+const handleReorderPinnedMessage = async (messageId: string, newOrder: number) => {
+  if (!activeConversation.value) return
+
+  const success = await reorderPinnedMessage(messageId, newOrder)
+  if (success) {
+    // Optimistic update: Update order in cache
+    updatePinnedMessageOrder(activeConversation.value._id, messageId, newOrder)
+  }
+}
+
+const handleScrollToMessage = (messageId: string) => {
+  // Find the message element and scroll to it
+  const messageElement = document.querySelector(`[data-message-id="${messageId}"]`)
+  if (messageElement) {
+    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // Add highlight animation
+    messageElement.classList.add('highlight')
+    setTimeout(() => {
+      messageElement.classList.remove('highlight')
+    }, 2000)
   }
 }
 
@@ -992,5 +1108,19 @@ const handleFriendshipRefresh = () => {
   .conversation-sidebar.show {
     transform: translateX(0);
   }
+}
+
+/* Highlight animation for scroll-to-message */
+@keyframes highlightMessage {
+  0% {
+    background-color: rgba(102, 126, 234, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.message-wrapper.highlight {
+  animation: highlightMessage 2s ease-out;
 }
 </style>
