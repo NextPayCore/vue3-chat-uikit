@@ -48,9 +48,25 @@ export function useAuth() {
         const backendData = await api.socialLogin('google', response.access_token)
         console.log('✅ Backend login successful:', backendData)
 
+        // Extract user ID from JWT token if not provided by backend
+        let userId = backendData.user?.id
+        if (!userId && backendData.accessToken) {
+          try {
+            // Decode JWT to get user ID from 'sub' field
+            const tokenParts = backendData.accessToken.split('.')
+            if (tokenParts.length === 3 && tokenParts[1]) {
+              const payload = JSON.parse(atob(tokenParts[1]))
+              userId = payload.sub || payload.id
+              console.log('📝 Extracted user ID from JWT:', userId)
+            }
+          } catch (e) {
+            console.error('Failed to decode JWT:', e)
+          }
+        }
+
         // Extract user info from backend response
         user = {
-          id: backendData.user?.id || 'user-' + Date.now(),
+          id: userId || 'user-' + Date.now(),
           name: backendData.user?.name || 'Google User',
           email: backendData.user?.email || '',
           avatarUrl: backendData.user?.avatarUrl || '',

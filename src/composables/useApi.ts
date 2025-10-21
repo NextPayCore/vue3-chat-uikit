@@ -419,7 +419,7 @@ export function useApi(config?: ApiConfig) {
 
   // === FILE UPLOAD APIs ===
 
-  // Upload file
+  // Upload file (generic endpoint)
   const uploadFile = async (file: File, type: 'image' | 'file' | 'video' | 'audio' = 'file'): Promise<{
     url: string
     filename: string
@@ -459,6 +459,101 @@ export function useApi(config?: ApiConfig) {
     } finally {
       isLoading.value = false
     }
+  }
+
+  // Upload image file
+  const uploadImage = async (file: File): Promise<{
+    url: string
+    filename: string
+    size: number
+    mimeType: string
+  }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    return post<{
+      url: string
+      filename: string
+      size: number
+      mimeType: string
+    }>('/api/upload/image', formData, {
+      'Content-Type': 'multipart/form-data'
+    })
+  }
+
+  // Upload video file
+  const uploadVideo = async (file: File): Promise<{
+    url: string
+    filename: string
+    size: number
+    mimeType: string
+  }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    return post<{
+      url: string
+      filename: string
+      size: number
+      mimeType: string
+    }>('/api/upload/video', formData, {
+      'Content-Type': 'multipart/form-data'
+    })
+  }
+
+  // Upload audio file
+  const uploadAudio = async (file: File): Promise<{
+    url: string
+    filename: string
+    size: number
+    mimeType: string
+  }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    return post<{
+      url: string
+      filename: string
+      size: number
+      mimeType: string
+    }>('/api/upload/audio', formData, {
+      'Content-Type': 'multipart/form-data'
+    })
+  }
+
+  // Upload document file
+  const uploadDocument = async (file: File): Promise<{
+    url: string
+    filename: string
+    size: number
+    mimeType: string
+  }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    return post<{
+      url: string
+      filename: string
+      size: number
+      mimeType: string
+    }>('/api/upload/document', formData, {
+      'Content-Type': 'multipart/form-data'
+    })
+  }
+
+  // Get supported file types
+  const getSupportedFileTypes = async (): Promise<{
+    images: string[]
+    videos: string[]
+    audios: string[]
+    documents: string[]
+  }> => {
+    return get<{
+      images: string[]
+      videos: string[]
+      audios: string[]
+      documents: string[]
+    }>('/api/upload/supported-types')
   }
 
   // Upload multiple files
@@ -574,6 +669,11 @@ export function useApi(config?: ApiConfig) {
     // File Upload APIs
     uploadFile,
     uploadFiles,
+    uploadImage,
+    uploadVideo,
+    uploadAudio,
+    uploadDocument,
+    getSupportedFileTypes,
 
     // Auth APIs
     socialLogin,

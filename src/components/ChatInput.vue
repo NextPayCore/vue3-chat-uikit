@@ -7,7 +7,13 @@
           <img :src="file.preview" :alt="file.name" />
           <div class="file-overlay">
             <span class="file-name">{{ file.name }}</span>
+            <!-- Upload progress -->
+            <div v-if="file.isUploading" class="upload-progress">
+              <el-progress :percentage="file.uploadProgress || 0" :stroke-width="4" />
+              <span class="upload-status">Uploading...</span>
+            </div>
             <el-button
+              v-if="!file.isUploading"
               size="small"
               type="danger"
               circle
@@ -25,8 +31,14 @@
           <div class="file-info">
             <span class="file-name">{{ file.name }}</span>
             <span class="file-size">{{ formatFileSize(file.size) }}</span>
+            <!-- Upload progress for non-image files -->
+            <div v-if="file.isUploading" class="upload-progress-inline">
+              <el-progress :percentage="file.uploadProgress || 0" :stroke-width="3" />
+              <span class="upload-status-small">{{ file.uploadProgress || 0 }}%</span>
+            </div>
           </div>
           <el-button
+            v-if="!file.isUploading"
             size="small"
             type="danger"
             circle
@@ -254,11 +266,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
-import { ElInput, ElButton, ElIcon } from 'element-plus'
+import { ref, computed, nextTick, onMounted } from 'vue'
+import { ElInput, ElButton, ElIcon, ElProgress } from 'element-plus'
 import { ArrowRight, Paperclip, Close, Document, Microphone, VideoPause, View, Edit } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
+import { useFileUpload, type UploadedFileInfo } from '../composables/useFileUpload'
 
 // Initialize markdown parser
 const md: MarkdownIt = new MarkdownIt({
@@ -287,6 +300,9 @@ interface UploadedFile {
   type: string
   file: File
   preview?: string
+  uploadedInfo?: UploadedFileInfo // Info from server after upload
+  uploadProgress?: number
+  isUploading?: boolean
 }
 
 interface VoiceRecording {
@@ -330,6 +346,9 @@ const props = withDefaults(defineProps<ChatInputProps>(), {
 
 const emit = defineEmits<ChatInputEmits>()
 
+// Initialize file upload composable
+const { uploadFile: uploadSingleFile, validateFile, getFileCategory, isUploading: isFileUploading } = useFileUpload()
+
 const message = ref('')
 const uploadedFiles = ref<UploadedFile[]>([])
 const inputRef = ref<InstanceType<typeof ElInput>>()
@@ -341,7 +360,7 @@ const isRecording = ref(false)
 const mediaRecorder = ref<MediaRecorder | null>(null)
 const audioChunks = ref<Blob[]>([])
 const recordingStartTime = ref<number>(0)
-const recordingTimer = ref<NodeJS.Timeout | null>(null)
+const recordingTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const currentVoiceRecording = ref<VoiceRecording | null>(null)
 
 const canSend = computed(() => {
@@ -349,7 +368,7 @@ const canSend = computed(() => {
     message.value.trim().length > 0 ||
     uploadedFiles.value.length > 0 ||
     currentVoiceRecording.value !== null
-  ) && !props.disabled && !isRecording.value
+  ) && !props.disabled && !isRecording.value && !isFileUploading.value
 })
 
 const markdownPreview = computed(() => {
@@ -361,12 +380,11 @@ const togglePreview = () => {
   isPreviewMode.value = !isPreviewMode.value
 }
 
-const handleKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    if (canSend.value) {
-      sendMessage()
-    }
+const handleKeydown = (event: Event | KeyboardEvent) => {
+  const keyEvent = event as KeyboardEvent
+  if (keyEvent.key === 'Enter' && !keyEvent.shiftKey) {
+    keyEvent.preventDefault()
+    sendMessage()
   }
 }
 
@@ -454,11 +472,16 @@ const handleFileSelect = async (event: Event) => {
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
+    if (!file) continue
 
-    // Check file size
-    if (file.size > props.maxFileSize * 1024 * 1024) {
-      // You might want to show an error message here
-      console.warn(`File ${file.name} is too large. Maximum size is ${props.maxFileSize}MB`)
+    // Validate file using composable
+    const validation = validateFile(file, {
+      maxSize: props.maxFileSize,
+      allowedTypes: props.allowedFileTypes
+    })
+
+    if (!validation.valid) {
+      console.warn(`File ${file.name}: ${validation.error}`)
       continue
     }
 
@@ -467,7 +490,9 @@ const handleFileSelect = async (event: Event) => {
       name: file.name,
       size: file.size,
       type: file.type,
-      file: file
+      file: file,
+      isUploading: false,
+      uploadProgress: 0
     }
 
     // Create preview for images
@@ -478,8 +503,35 @@ const handleFileSelect = async (event: Event) => {
     newFiles.push(fileData)
   }
 
+  // Add files to list
   uploadedFiles.value.push(...newFiles)
   emit('fileUpload', uploadedFiles.value)
+
+  // Auto upload files to server
+  for (const fileData of newFiles) {
+    try {
+      fileData.isUploading = true
+
+      const category = getFileCategory(fileData.type)
+      const uploadedInfo = await uploadSingleFile(fileData.file, {
+        category,
+        onProgress: (progress) => {
+          fileData.uploadProgress = progress
+        }
+      })
+
+      fileData.uploadedInfo = uploadedInfo
+      fileData.isUploading = false
+      fileData.uploadProgress = 100
+
+      console.log(`✅ File ${fileData.name} uploaded:`, uploadedInfo)
+    } catch (error) {
+      console.error(`❌ Failed to upload ${fileData.name}:`, error)
+      fileData.isUploading = false
+      // Remove file from list on error
+      uploadedFiles.value = uploadedFiles.value.filter(f => f.id !== fileData.id)
+    }
+  }
 
   // Clear the input
   target.value = ''
@@ -1272,6 +1324,40 @@ defineExpose({
   border-radius: 4px;
   border-left: 2px solid #10a37f;
   display: inline-block;
+}
+
+/* Upload progress styles */
+.upload-progress {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.upload-progress :deep(.el-progress-bar) {
+  padding-right: 0;
+}
+
+.upload-status {
+  font-size: 11px;
+  color: #10a37f;
+  margin-top: 4px;
+  display: block;
+  font-weight: 500;
+}
+
+.upload-progress-inline {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.upload-progress-inline :deep(.el-progress-bar) {
+  padding-right: 0;
+}
+
+.upload-status-small {
+  font-size: 10px;
+  color: #10a37f;
+  margin-left: 8px;
+  font-weight: 500;
 }
 
 @media (max-width: 768px) {

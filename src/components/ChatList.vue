@@ -36,13 +36,11 @@
         <div class="message-content" :class="[
           message.sender.id === currentUser?.id ? 'message-content-right' : ''
         ]"    >
-          <!-- Avatar for assistant messages -->
-          <div v-if="message.sender.id === 'assistant'" class="message-avatar">
-            <div class="avatar-circle">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="gpt-icon">
-                <path d="M8.18 1.71a6 6 0 0 0-5.94 6.53 2.5 2.5 0 0 1-.63 2.42L.5 11.5a.5.5 0 0 0 .35.85h14.3a.5.5 0 0 0 .35-.85l-1.11-.84a2.5 2.5 0 0 1-.63-2.42A6 6 0 0 0 8.18 1.71z" fill="white"/>
-              </svg>
-            </div>
+          <!-- Avatar for other user messages -->
+          <div v-if="message.sender.id !== currentUser?.id" class="message-avatar">
+            <el-avatar :src="message.sender.avatarUrl" :size="32" class="avatar-circle">
+              {{ message.sender.name?.charAt(0) || '?' }}
+            </el-avatar>
           </div>
 
           <!-- Message bubble -->
@@ -133,11 +131,13 @@
                 <el-icon><ChatLineRound /></el-icon>
               </button>
             </div>
-          </div>          <!-- Avatar for user messages -->
-          <div v-if="message.role === 'user'" class="message-avatar user-avatar">
-            <div class="avatar-circle user-avatar-circle">
-              <span class="user-initial">{{ getUserInitial() }}</span>
-            </div>
+          </div>
+
+          <!-- Avatar for current user messages -->
+          <div v-if="message.sender.id === currentUser?.id" class="message-avatar user-avatar">
+            <el-avatar :src="currentUser?.avatarUrl" :size="32" class="avatar-circle user-avatar-circle">
+              {{ currentUser?.name?.charAt(0) || 'U' }}
+            </el-avatar>
           </div>
         </div>
 
@@ -152,7 +152,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick, watch, computed } from 'vue'
-import { ElIcon, ElMessage, ElProgress } from 'element-plus'
+import { ElIcon, ElMessage, ElProgress, ElAvatar } from 'element-plus'
 import { Document, Microphone, CopyDocument, ChatLineRound } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
@@ -265,10 +265,6 @@ const formatTimestamp = (timestamp: Date) => {
   if (hours < 24) return `${hours}h ago`
 
   return timestamp.toLocaleDateString()
-}
-
-const getUserInitial = () => {
-  return 'U' // You can customize this based on user data
 }
 
 const truncateText = (text: string, maxLength: number) => {
@@ -484,11 +480,6 @@ defineExpose({
   color: white;
   font-weight: 600;
   font-size: 14px;
-}
-
-.gpt-icon {
-  width: 16px;
-  height: 16px;
 }
 
 .message-bubble {

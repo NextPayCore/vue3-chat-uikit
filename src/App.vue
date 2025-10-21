@@ -252,15 +252,15 @@ const currentMessages = computed((): IMessage[] => {
     content: msg.content,
     contentText: msg.content,
     sender: {
-      id: msg.senderId,
-      name: msg.senderName || 'Unknown',
-      avatarUrl: msg.senderAvatar || '',
+      id: msg.sender.id,
+      name: msg.sender.name,
+      avatarUrl: msg.sender.avatar || '',
       isOnline: true
     },
     status: msg.readBy.includes(authUser.value?.id || '')
       ? MessageStatusEnum.READ
       : MessageStatusEnum.DELIVERED,
-    role: msg.senderId === authUser.value?.id ? 'user' : 'assistant',
+    role: msg.sender.id === authUser.value?.id ? 'user' : 'assistant',
     timestamp: new Date(msg.createdAt),
     type: msg.type === 'image' ? 'image' : msg.type === 'file' ? 'text' : 'text',
     createdAt: new Date(msg.createdAt),
@@ -276,13 +276,13 @@ const currentMessages = computed((): IMessage[] => {
       content: msg.replyToMessage.content,
       contentText: msg.replyToMessage.content,
       sender: {
-        id: msg.replyToMessage.senderId,
-        name: msg.replyToMessage.senderName || 'Unknown',
-        avatarUrl: msg.replyToMessage.senderAvatar || '',
+        id: msg.replyToMessage.sender.id,
+        name: msg.replyToMessage.sender.name,
+        avatarUrl: msg.replyToMessage.sender.avatar || '',
         isOnline: true
       },
       status: MessageStatusEnum.DELIVERED,
-      role: msg.replyToMessage.senderId === authUser.value?.id ? 'user' : 'assistant',
+      role: msg.replyToMessage.sender.id === authUser.value?.id ? 'user' : 'assistant',
       timestamp: new Date(msg.replyToMessage.createdAt),
       createdAt: new Date(msg.replyToMessage.createdAt),
       updatedAt: new Date(msg.replyToMessage.updatedAt)
@@ -356,6 +356,7 @@ const {
     }
   },
   {
+    currentUserId: authUser.value?.id, // Pass current user ID for message normalization
     onConnect: () => {
       console.log('✅ Socket connected successfully')
       // Rejoin active conversation if exists

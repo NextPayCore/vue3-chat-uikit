@@ -6,6 +6,11 @@ import type {
   ICreateConversationRequest,
   IConversationListResponse
 } from '../interfaces/conversation.interface'
+import {
+  parseParticipants,
+  enrichUsersWithCache,
+  extractParticipantIds
+} from '../utils/conversationParser'
 
 // State
 const conversations = ref<IConversation[]>([])
@@ -22,19 +27,7 @@ export function useConversation() {
 
     // Update all conversations with cached user details
     conversations.value = conversations.value.map(conv => {
-      const enrichedParticipants = conv.participants.map(participant => {
-        const cachedUser = userCache.value.get(participant.id)
-        if (cachedUser) {
-          return {
-            ...participant,
-            name: cachedUser.name || participant.name,
-            email: cachedUser.email || participant.email,
-            avatarUrl: cachedUser.avatarUrl || cachedUser.avatar || participant.avatarUrl,
-            isOnline: cachedUser.isOnline || participant.isOnline
-          }
-        }
-        return participant
-      })
+      const enrichedParticipants = enrichUsersWithCache(conv.participants, userCache.value)
 
       return {
         ...conv,
@@ -61,32 +54,9 @@ export function useConversation() {
       } else {
         conversationsList = data.conversations || []
       }
-
-      // Adapt backend response to match IConversation interface
-      // Backend returns: {id, type, participants: string[], createdBy: string, ...}
-      // Frontend expects: {_id, type, participants: IUser[], participantIds: string[], ...}
-      //
-      // ⚠️ NOTE: Backend does NOT populate participants, so we create placeholder user objects
-      // The actual user names will be loaded when we fetch friends list or messages
       const adaptedConversations = conversationsList.map((conv: any) => {
-        // Create placeholder user objects from participant IDs
-        let participantUsers = []
-        if (conv.participants && conv.participants.length > 0) {
-          if (typeof conv.participants[0] === 'string') {
-            // Participants are IDs, create minimal user objects
-            // These will be enriched later when we have user data from other sources
-            participantUsers = conv.participants.map((userId: string) => ({
-              id: userId,
-              name: userId.substring(0, 8) + '...', // Temporary: show part of ID
-              email: '',
-              avatarUrl: '',
-              isOnline: false
-            }))
-          } else {
-            // Participants are already populated (rare case)
-            participantUsers = conv.participants
-          }
-        }
+        // Parse participants using utility function
+        const participantUsers = parseParticipants(conv.participants || [])
 
         return {
           _id: conv.id || conv._id,
@@ -95,7 +65,7 @@ export function useConversation() {
           description: conv.description,
           avatar: conv.avatar,
           participants: participantUsers,
-          participantIds: conv.participants || [],
+          participantIds: extractParticipantIds(conv.participants || []),
           createdBy: typeof conv.createdBy === 'string' ? conv.createdBy : conv.createdBy?.id,
           lastMessage: conv.lastMessage,
           lastMessageAt: conv.lastMessageAt ? new Date(conv.lastMessageAt) : new Date(conv.updatedAt),

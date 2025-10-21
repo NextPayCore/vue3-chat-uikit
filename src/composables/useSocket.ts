@@ -2,6 +2,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { io, Socket } from 'socket.io-client'
 import type { IMessage } from '../interfaces/message.interface'
 import type { IConversation } from '../interfaces/conversation.interface'
+import { normalizeSocketMessage, normalizeSocketConversation } from '../utils/socketMessageParser'
 
 interface SocketConfig {
   url: string
@@ -26,6 +27,7 @@ interface SocketEvents {
   onConversationUpdated?: (data: { conversationId: string; lastMessage?: IMessage }) => void
   onUserOnline?: (userId: string) => void
   onUserOffline?: (userId: string) => void
+  currentUserId?: string // Add current user ID for message normalization
 }
 
 export function useSocket(config: SocketConfig, events?: SocketEvents) {
@@ -108,9 +110,14 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
     })
 
     // Chat API events (following the documentation)
-    socket.value.on('new_message', (message: IMessage) => {
-      console.log('📩 Received new_message event:', message)
-      events?.onNewMessage?.(message)
+    socket.value.on('new_message', (rawMessage: any) => {
+      console.log('📩 Received new_message event (raw):', rawMessage)
+
+      // Normalize message using utility
+      const normalizedMessage = normalizeSocketMessage(rawMessage, events?.currentUserId)
+      console.log('📩 Normalized message:', normalizedMessage)
+
+      events?.onNewMessage?.(normalizedMessage)
     })
 
     socket.value.on('user_typing', (data: { userId: string; conversationId: string; isTyping: boolean }) => {
@@ -123,9 +130,19 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
       events?.onMessageRead?.(data)
     })
 
-    socket.value.on('conversation_updated', (data: { conversationId: string; lastMessage?: IMessage }) => {
-      console.log('🔄 Received conversation_updated event:', data)
-      events?.onConversationUpdated?.(data)
+    socket.value.on('conversation_updated', (rawData: any) => {
+      console.log('🔄 Received conversation_updated event (raw):', rawData)
+
+      // Normalize conversation and message if present
+      const normalizedData = {
+        conversationId: rawData.conversationId,
+        lastMessage: rawData.lastMessage
+          ? normalizeSocketMessage(rawData.lastMessage, events?.currentUserId)
+          : undefined
+      }
+      console.log('🔄 Normalized conversation_updated:', normalizedData)
+
+      events?.onConversationUpdated?.(normalizedData)
     })
 
     socket.value.on('user:online', (userId: string) => {
