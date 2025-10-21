@@ -173,6 +173,7 @@ import { useAuth } from './composables/useAuth'
 import { useFriendship } from './composables/useFriendship'
 import { useConversation } from './composables/useConversation'
 import { useMessages } from './composables/useMessages'
+import { convertToIChatMessage } from './utils/socketMessageParser'
 import type { IMessage } from './interfaces/message.interface'
 import type { IUploadedFile } from './interfaces/chatinput.interface'
 import type { IFriendUser } from './interfaces/friendship.interface'
@@ -209,7 +210,8 @@ const {
   activeConversation,
   setActiveConversation,
   getConversations,
-  createConversation
+  createConversation,
+  updateConversationLastMessage
 } = useConversation()
 
 // Messages
@@ -332,6 +334,7 @@ const isOtherUserOnline = computed(() => {
 
 // Initialize socket
 const {
+  socket,
   isConnected,
   isConnecting,
   error: socketError,
@@ -359,6 +362,13 @@ const {
     currentUserId: authUser.value?.id, // Pass current user ID for message normalization
     onConnect: () => {
       console.log('✅ Socket connected successfully')
+
+      // Request initial online users list
+      if (socket.value?.connected) {
+        console.log('📡 Requesting online users list...')
+        socket.value.emit('get_online_users')
+      }
+
       // Rejoin active conversation if exists
       if (activeConversation.value) {
         joinConversation(activeConversation.value._id)
@@ -373,23 +383,36 @@ const {
       console.error('Socket error:', error)
     },
     onNewMessage: (message: IMessage) => {
-      console.log('📩 New message received:', message)
+      console.log('📩 New message received (normalized):', message)
 
-      // Convert IMessage to IChatMessage format if needed
-      // In production, the backend should send IChatMessage directly
-      // For now, we'll just log it and refresh the conversation
-      if (activeConversation.value) {
-        // Refresh messages for the active conversation
-        getChatHistory(activeConversation.value._id, 1, 50)
+      // Get conversationId from message metadata
+      const conversationId = message.metadata?.conversationId
 
-        // Remove typing indicator for this user
-        if (message.sender?.name) {
-          typingUsers.value = typingUsers.value.filter(u => u !== message.sender.name)
-        }
+      if (!conversationId) {
+        console.warn('⚠️ No conversationId in message metadata, cannot process')
+        return
       }
 
-      // Refresh conversations list to update last message
-      getConversations()
+      // Convert IMessage to IChatMessage format
+      const chatMessage = convertToIChatMessage(message, conversationId)
+      console.log('📩 Converted to IChatMessage:', chatMessage)
+
+      // Add message to local state (no API call needed!)
+      addMessage(conversationId, chatMessage)
+      console.log('✅ Message added to local state')
+
+      // Update conversation's last message in sidebar (no API call!)
+      updateConversationLastMessage(
+        conversationId,
+        message.content,
+        message.createdAt
+      )
+      console.log('✅ Conversation list updated')
+
+      // Remove typing indicator for this user
+      if (message.sender?.name) {
+        typingUsers.value = typingUsers.value.filter(u => u !== message.sender.name)
+      }
     },
     onUserTyping: (data: { userId: string; conversationId: string; isTyping: boolean }) => {
       console.log('⌨️ User typing:', data)
@@ -415,8 +438,18 @@ const {
     },
     onConversationUpdated: (data: { conversationId: string; lastMessage?: IMessage }) => {
       console.log('🔄 Conversation updated:', data)
-      // Refresh conversations list
-      getConversations()
+
+      // Update conversation's last message locally (no API call!)
+      if (data.lastMessage) {
+        updateConversationLastMessage(
+          data.conversationId,
+          data.lastMessage.content,
+          data.lastMessage.createdAt
+        )
+        console.log('✅ Conversation list updated (client-side)')
+      } else {
+        console.log('⚠️ No lastMessage in conversation_updated event')
+      }
     },
     onUserOnline: (userId: string) => {
       console.log('🟢 User online:', userId)
@@ -425,6 +458,15 @@ const {
     onUserOffline: (userId: string) => {
       console.log('⚪ User offline:', userId)
       onlineUsers.value.delete(userId)
+    },
+    onOnlineUsers: (userIds: string[]) => {
+      console.log('👥 Initial online users received:', userIds.length, 'users')
+      // Clear and set initial online users
+      onlineUsers.value.clear()
+      userIds.forEach(userId => {
+        onlineUsers.value.add(userId)
+      })
+      console.log('✅ Online users initialized:', Array.from(onlineUsers.value))
     }
   }
 )
