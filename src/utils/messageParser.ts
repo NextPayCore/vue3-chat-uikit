@@ -66,6 +66,15 @@ export function resolveReplyToReferences(
   const { verbose = true, warnOnMissing = true } = options
 
   return messages.map(msg => {
+    // Check if backend sent replyMessage field (new format)
+    if ((msg as any).replyMessage && !msg.replyToMessage) {
+      msg.replyToMessage = (msg as any).replyMessage
+      if (verbose) {
+        console.log(`✅ Used replyMessage field for message ${msg.id}`)
+      }
+      return msg
+    }
+
     // Skip if already has replyToMessage or no replyTo
     if (!msg.replyTo || msg.replyToMessage) {
       return msg

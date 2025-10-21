@@ -83,14 +83,21 @@ export function normalizeSocketMessage(
     if (typeof socketMessage.replyTo === 'string') {
       // Backend sent replyTo as string ID - will need to be resolved later
       const replyToId = parseReplyToId(socketMessage.replyTo)
-      if (replyToId && socketMessage.replyToMessage) {
-        // If replyToMessage is populated, use it
-        replyToMessage = normalizeSocketMessage(socketMessage.replyToMessage, currentUserId)
+      // Check both replyToMessage and replyMessage fields
+      if (replyToId && (socketMessage.replyToMessage || socketMessage.replyMessage)) {
+        // If replyToMessage/replyMessage is populated, use it
+        replyToMessage = normalizeSocketMessage(
+          socketMessage.replyToMessage || socketMessage.replyMessage,
+          currentUserId
+        )
       }
     } else if (typeof socketMessage.replyTo === 'object') {
       // Backend sent full replyTo message object
       replyToMessage = normalizeSocketMessage(socketMessage.replyTo, currentUserId)
     }
+  } else if (socketMessage.replyMessage) {
+    // Backend only sent replyMessage field (without replyTo)
+    replyToMessage = normalizeSocketMessage(socketMessage.replyMessage, currentUserId)
   }
 
   return {

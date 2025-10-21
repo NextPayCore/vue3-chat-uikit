@@ -50,14 +50,16 @@
               <div class="reply-line"></div>
               <div class="reply-content">
                 <div class="reply-header">
-                  <span class="reply-author">{{ message.replyTo.role === 'user' ? 'You' : 'Assistant' }}</span>
+                  <span class="reply-author">
+                    {{ message.replyTo.sender?.id === currentUser?.id ? 'You' : (message.replyTo.sender?.name || 'Unknown') }}
+                  </span>
                   <span class="reply-time">{{ formatTimestamp(message.replyTo.timestamp) }}</span>
                 </div>
                 <div class="reply-text">
                   <span v-if="message.replyTo.selectedText" class="selected-text">
                     "{{ message.replyTo.selectedText }}"
                   </span>
-                  <span v-else>{{ truncateText(message.replyTo.content, 100) }}</span>
+                  <span v-else>{{ truncateText(message.replyTo.content || message.replyTo.contentText || '', 100) }}</span>
                 </div>
               </div>
             </div>
