@@ -17,15 +17,19 @@
     <transition name="collapse">
       <div v-show="!isCollapsed" class="pinned-list">
         <draggable
+          v-if="localPinnedMessages.length > 0"
           v-model="localPinnedMessages"
-          item-key="message.id"
+          :key="`draggable-${conversationId}`"
+          item-key="id"
           handle=".drag-handle"
           animation="200"
+          @start="isDragging = true"
           @end="onDragEnd"
           class="draggable-list"
         >
           <template #item="{ element, index }">
             <div
+              v-if="element && element.message"
               class="pinned-item"
               :class="{ 'dragging': isDragging }"
               @click="scrollToMessage(element.message.id)"
@@ -91,17 +95,20 @@ const emit = defineEmits<Emits>()
 // State
 const isCollapsed = ref(false)
 const isDragging = ref(false)
-const localPinnedMessages = ref<IPinnedMessage[]>([...props.pinnedMessages])
+const localPinnedMessages = ref<IPinnedMessage[]>([])
 
-// Watch for external updates
+// Initialize local messages safely
 watch(
   () => props.pinnedMessages,
   (newMessages) => {
-    if (!isDragging.value) {
-      localPinnedMessages.value = [...newMessages]
+    if (!isDragging.value && newMessages) {
+      // Filter out any invalid messages
+      localPinnedMessages.value = newMessages.filter(pm =>
+        pm && pm.message && pm.message.id
+      )
     }
   },
-  { deep: true }
+  { immediate: true, deep: true }
 )
 
 // Methods
@@ -119,13 +126,21 @@ const scrollToMessage = (messageId: string) => {
 
 const onDragEnd = (event: any) => {
   isDragging.value = false
+
+  if (!event || typeof event.oldIndex !== 'number' || typeof event.newIndex !== 'number') {
+    console.warn('⚠️ Invalid drag event:', event)
+    return
+  }
+
   const { oldIndex, newIndex } = event
 
-  if (oldIndex !== newIndex && newIndex !== undefined) {
+  if (oldIndex !== newIndex && newIndex >= 0 && newIndex < localPinnedMessages.value.length) {
     const movedMessage = localPinnedMessages.value[newIndex]
-    if (movedMessage) {
+    if (movedMessage && movedMessage.message && movedMessage.message.id) {
       console.log(`🔄 Reordering message ${movedMessage.message.id} from ${oldIndex} to ${newIndex}`)
       emit('reorder', movedMessage.message.id, newIndex)
+    } else {
+      console.warn('⚠️ Invalid message at new index:', newIndex, movedMessage)
     }
   }
 }

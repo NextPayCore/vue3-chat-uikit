@@ -123,16 +123,18 @@
 
             <!-- Chat messages area -->
             <!-- Pinned Messages -->
-            <PinnedMessages
+            <!-- <PinnedMessages
               v-if="activeConversation && currentPinnedMessages.length > 0"
+              :key="`pinned-${activeConversation._id}`"
               :pinned-messages="currentPinnedMessages"
               :conversation-id="activeConversation._id"
               @unpin="handleUnpinMessage"
               @reorder="handleReorderPinnedMessage"
               @scroll-to="handleScrollToMessage"
-            />
+            /> -->
 
             <ChatList
+              :key="`chat-${activeConversation._id}`"
               :messages="currentMessages"
               :auto-scroll="true"
               @message-click="handleMessageClick"
@@ -143,8 +145,8 @@
 
             <!-- Input area -->
             <ChatInput
-              :disabled="!isAuthenticated || isLoading || (USE_SOCKET && !isConnected)"
-              :placeholder="isAuthenticated ? `Message ${conversationName}...` : 'Please sign in to chat'"
+              :disabled="inputDisabledState"
+              :placeholder="!activeConversation ? 'Select a conversation to start' : isAuthenticated ? `Message ${conversationName}...` : 'Please sign in to chat'"
               :reply-to="replyingTo"
               @send="handleSendMessage"
               @typing="handleTyping"
@@ -281,14 +283,37 @@ const currentPinnedMessages = computed(() => {
   return getPinnedMessagesFromCache(activeConversation.value._id)
 })
 
+// Debug computed for input disabled state
+const inputDisabledState = computed(() => {
+  const state = {
+    hasConversation: !!activeConversation.value,
+    isAuthenticated: isAuthenticated.value,
+    isLoading: isLoading.value,
+    useSocket: USE_SOCKET,
+    isConnected: isConnected.value,
+    disabled: !activeConversation.value || !isAuthenticated.value || isLoading.value || (USE_SOCKET && !isConnected.value)
+  }
+  console.log('🎮 Input disabled state:', state)
+  return state.disabled
+})
+
 const currentMessages = computed((): IMessage[] => {
-  if (!activeConversation.value) return []
+  if (!activeConversation.value) {
+    console.log('⚠️ No active conversation')
+    return []
+  }
 
   const chatMessages = getMessages(activeConversation.value._id)
+  console.log(`📊 Computing messages for ${activeConversation.value._id}:`, chatMessages.length)
+
+  if (!chatMessages || chatMessages.length === 0) {
+    console.log('⚠️ No messages found for this conversation')
+    return []
+  }
 
   // Create a Set of pinned message IDs for O(1) lookup
   const pinnedMessageIds = new Set(
-    currentPinnedMessages.value.map(pm => pm.message.id)
+    currentPinnedMessages.value.map(pm => pm?.message?.id).filter(Boolean)
   )
 
   // Convert IChatMessage to IMessage for the ChatList component
@@ -620,18 +645,28 @@ const handleSignOut = () => {
 
 // Conversation handlers
 const handleSelectConversation = async (conversation: IConversation) => {
-  // Leave previous conversation
-  if (activeConversation.value && USE_SOCKET && isConnected.value) {
-    leaveConversation(activeConversation.value._id)
-  }
-
-  // Set new active conversation
-  setActiveConversation(conversation)
-
-  // Load chat history
-  isLoading.value = true
   try {
+    console.log('🔄 Switching to conversation:', conversation._id)
+
+    // Leave previous conversation
+    if (activeConversation.value && USE_SOCKET && isConnected.value) {
+      leaveConversation(activeConversation.value._id)
+    }
+
+    // Clear typing indicators immediately
+    typingUsers.value = []
+
+    // Load chat history
+    isLoading.value = true
+
+    // Load messages for this conversation (will use cache if available)
     await getChatHistory(conversation._id, 1, 50)
+
+    // Set new active conversation AFTER loading messages
+    setActiveConversation(conversation)
+
+    console.log('✅ Conversation set to:', conversation._id)
+    console.log('📩 Current messages count:', getMessages(conversation._id).length)
 
     // Load pinned messages
     await getPinnedMessages(conversation._id)
@@ -643,11 +678,9 @@ const handleSelectConversation = async (conversation: IConversation) => {
 
     // Mark all as read
     await markAllAsRead(conversation._id)
-
-    // Clear typing indicators
-    typingUsers.value = []
   } catch (error) {
     console.error('Failed to load conversation:', error)
+    ElMessage.error('Failed to load conversation. Please try again.')
   } finally {
     isLoading.value = false
   }

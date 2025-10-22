@@ -321,7 +321,9 @@ export function useConversation() {
 
   // Set active conversation
   const setActiveConversation = (conversation: IConversation | null) => {
+    console.log('🎯 Setting active conversation:', conversation?._id, conversation)
     activeConversation.value = conversation
+    console.log('✅ Active conversation set. Current value:', activeConversation.value?._id)
   }
 
   // Update conversation's last message (for socket events)
