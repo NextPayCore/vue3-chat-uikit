@@ -69,27 +69,21 @@ export function useConversation() {
         if (conv.type === 'private') {
           const participantsMap = new Map<string, any>()
 
-          // 1. Start with ALL participant IDs from backend (ensures we have both users)
-          conv.participants.forEach((id: string) => {
-            if (!participantsMap.has(id)) {
-              // Create placeholder with ID
-              participantsMap.set(id, {
-                id,
-                name: id.substring(0, 8) + '...',
-                email: '',
-                avatarUrl: '',
-                isOnline: false
-              })
+          // 1. Start with parsed participant users (from parseParticipants)
+          participantUsers.forEach((user: any) => {
+            if (!participantsMap.has(user.id)) {
+              participantsMap.set(user.id, user)
             }
           })
 
-          // 2. Enrich with lastMessage.sender (might be current user or other user)
+          // 2. Enrich with lastMessage.sender (might have more recent info)
           if (conv.lastMessage?.sender?.id) {
+            const existingUser = participantsMap.get(conv.lastMessage.sender.id) || {}
             participantsMap.set(conv.lastMessage.sender.id, {
               id: conv.lastMessage.sender.id,
-              name: conv.lastMessage.sender.name,
-              email: conv.lastMessage.sender.email || '',
-              avatarUrl: conv.lastMessage.sender.avatar || '',
+              name: conv.lastMessage.sender.name || existingUser.name,
+              email: conv.lastMessage.sender.email || existingUser.email || '',
+              avatarUrl: conv.lastMessage.sender.avatar || existingUser.avatarUrl || '',
               isOnline: false
             })
           }
@@ -100,14 +94,15 @@ export function useConversation() {
           }
 
           // 4. Enrich from userCache (friends list, etc.)
-          conv.participants.forEach((id: string) => {
-            const cachedUser = userCache.value.get(id)
+          participantUsers.forEach((user: any) => {
+            const cachedUser = userCache.value.get(user.id)
             if (cachedUser) {
-              participantsMap.set(id, {
-                id,
-                name: cachedUser.name || cachedUser.username || participantsMap.get(id)?.name,
-                email: cachedUser.email || participantsMap.get(id)?.email || '',
-                avatarUrl: cachedUser.avatarUrl || cachedUser.avatar || participantsMap.get(id)?.avatarUrl || '',
+              const existingUser = participantsMap.get(user.id) || {}
+              participantsMap.set(user.id, {
+                id: user.id,
+                name: cachedUser.name || cachedUser.username || existingUser.name,
+                email: cachedUser.email || existingUser.email || '',
+                avatarUrl: cachedUser.avatarUrl || cachedUser.avatar || existingUser.avatarUrl || '',
                 isOnline: cachedUser.isOnline || false
               })
             }
@@ -120,7 +115,7 @@ export function useConversation() {
           console.log(`📋 Conversation ${conv.id} participants:`, {
             originalIds: conv.participants,
             enrichedCount: participantUsers.length,
-            participants: participantUsers.map(p => ({ id: p.id, name: p.name }))
+            participants: participantUsers.map((p: any) => ({ id: p.id, name: p.name }))
           })
         }
 

@@ -42,13 +42,15 @@ export function parseCreatedByUser(createdByString: string | null | undefined): 
       return null
     }
 
-    return {
+    const user: IUser = {
       id,
       name,
-      email: email || '',
-      avatarUrl: avatar || '',
+      email: email || undefined,
+      avatarUrl: avatar || undefined,
       isOnline: false
     }
+
+    return user
   } catch (error) {
     console.error('❌ Error parsing createdBy:', error)
     return null
@@ -58,9 +60,10 @@ export function parseCreatedByUser(createdByString: string | null | undefined): 
 /**
  * Parse participants field from conversation API response
  *
- * Handles two formats:
+ * Handles three formats:
  * 1. Array of user IDs (strings): ["68f5d531334e1cfa50f451a6", ...]
  * 2. Array of populated user objects: [{id: "...", name: "...", ...}, ...]
+ * 3. Array of stringified MongoDB objects: ["{\n  _id: new ObjectId('...'),\n  name: '...',\n  ...}", ...]
  *
  * @param participants - Raw participants data from backend
  * @returns Array of user objects (minimal or full)
@@ -73,9 +76,8 @@ export function parseParticipants(participants: any[]): IUser[] {
   // Check first item to determine format
   const firstItem = participants[0]
 
-  if (typeof firstItem === 'string') {
-    // Case 1: Participants are IDs - create minimal user objects
-    // These will be enriched later when we have user data from other sources
+  // Case 1: String IDs (24 char hex) - create minimal user objects
+  if (typeof firstItem === 'string' && /^[a-f0-9]{24}$/i.test(firstItem)) {
     return participants.map((userId: string) => ({
       id: userId,
       name: userId.substring(0, 8) + '...', // Temporary: show part of ID
@@ -83,8 +85,55 @@ export function parseParticipants(participants: any[]): IUser[] {
       avatarUrl: '',
       isOnline: false
     }))
-  } else if (typeof firstItem === 'object' && firstItem.id) {
-    // Case 2: Participants are already populated objects
+  }
+
+  // Case 2: Stringified MongoDB objects - parse them
+  if (typeof firstItem === 'string' && firstItem.includes('ObjectId')) {
+    console.log('📋 Parsing stringified MongoDB participants:', participants)
+    return participants
+      .map((participantStr: string): IUser | null => {
+        try {
+          // Extract _id
+          const idMatch = participantStr.match(/_id:\s*new ObjectId\('([a-f0-9]{24})'\)/i)
+          const id = idMatch ? idMatch[1] : null
+
+          // Extract name
+          const nameMatch = participantStr.match(/name:\s*'([^']+)'/i)
+          const name = nameMatch ? nameMatch[1] : null
+
+          // Extract email
+          const emailMatch = participantStr.match(/email:\s*'([^']+)'/i)
+          const email = emailMatch ? emailMatch[1] : ''
+
+          // Extract avatar
+          const avatarMatch = participantStr.match(/avatar:\s*'([^']+)'/i)
+          const avatar = avatarMatch ? avatarMatch[1] : ''
+
+          if (!id) {
+            console.warn('⚠️ Could not extract ID from participant string:', participantStr)
+            return null
+          }
+
+          const user: IUser = {
+            id,
+            name: name || 'Unknown User',
+            email,
+            avatarUrl: avatar,
+            isOnline: false
+          }
+
+          console.log('✅ Parsed participant:', user)
+          return user
+        } catch (error) {
+          console.error('❌ Error parsing participant string:', error, participantStr)
+          return null
+        }
+      })
+      .filter((user): user is IUser => user !== null)
+  }
+
+  // Case 3: Already populated objects
+  if (typeof firstItem === 'object' && (firstItem.id || firstItem._id)) {
     return participants.map((user: any) => ({
       id: user.id || user._id,
       name: user.name || user.username || 'Unknown',
