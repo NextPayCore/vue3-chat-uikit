@@ -472,11 +472,21 @@ const {
       addMessage(conversationId, chatMessage)
       console.log('✅ Message added to local state')
 
-      // Update conversation's last message in sidebar (no API call!)
+      // Update conversation's last message in sidebar (pass full message object!)
       updateConversationLastMessage(
         conversationId,
-        message.content,
-        message.createdAt
+        {
+          id: message.id,
+          content: message.content,
+          contentText: message.contentText || message.content,
+          sender: message.sender,
+          type: message.type,
+          status: message.status,
+          timestamp: message.createdAt,
+          fileName: message.fileName,
+          metadata: message.metadata
+        },
+        new Date(message.createdAt)
       )
       console.log('✅ Conversation list updated')
 
@@ -512,10 +522,21 @@ const {
 
       // Update conversation's last message locally (no API call!)
       if (data.lastMessage) {
+        const msg = data.lastMessage
         updateConversationLastMessage(
           data.conversationId,
-          data.lastMessage.content,
-          data.lastMessage.createdAt
+          {
+            id: msg.id,
+            content: msg.content,
+            contentText: msg.contentText || msg.content,
+            sender: msg.sender,
+            type: msg.type,
+            status: msg.status,
+            timestamp: msg.createdAt,
+            fileName: msg.fileName,
+            metadata: msg.metadata
+          },
+          new Date(msg.createdAt)
         )
         console.log('✅ Conversation list updated (client-side)')
       } else {
@@ -854,10 +875,10 @@ onMounted(async () => {
   } else {
     // Load data (only if authenticated)
     try {
-      await Promise.all([
-        getFriendshipList(),
-        getDetailedConversations()  // Use detailed API
-      ])
+      // await Promise.all([
+      //   getFriendshipList(),
+      //   getConversations()  // Use detailed API
+      // ])
 
       console.log('✅ Loaded conversations with detailed participant info on mount')
        if (USE_SOCKET) {

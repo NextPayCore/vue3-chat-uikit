@@ -162,7 +162,7 @@ const getLastMessagePreview = (conversation: IConversation): string => {
     return `${senderPrefix}🎥 Video`
   }
 
-  const content = msg.content || ''
+  const content = msg.content || msg.contentText || ''
   const maxLength = 50
   return `${senderPrefix}${content.length > maxLength ? content.substring(0, maxLength) + '...' : content}`
 }

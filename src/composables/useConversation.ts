@@ -7,10 +7,7 @@ import type {
   IConversationListResponse
 } from '../interfaces/conversation.interface'
 import {
-  parseParticipants,
-  enrichUsersWithCache,
-  extractParticipantIds,
-  parseCreatedByUser
+  extractParticipantIds
 } from '../utils/conversationParser'
 
 // State
@@ -28,7 +25,20 @@ export function useConversation() {
 
     // Update all conversations with cached user details
     conversations.value = conversations.value.map(conv => {
-      const enrichedParticipants = enrichUsersWithCache(conv.participants, userCache.value)
+      // Enrich participant details from cache
+      const enrichedParticipants = conv.participants.map((p: any) => {
+        const cachedUser = userCache.value.get(p.id)
+        if (cachedUser) {
+          return {
+            id: p.id,
+            name: cachedUser.name || cachedUser.username || p.name,
+            email: cachedUser.email || p.email || '',
+            avatarUrl: cachedUser.avatarUrl || cachedUser.avatar || p.avatar || '',
+            isOnline: cachedUser.isOnline || false
+          }
+        }
+        return p
+      })
 
       return {
         ...conv,
@@ -57,19 +67,21 @@ export function useConversation() {
         conversationsList = data.conversations || []
       }
       const adaptedConversations = conversationsList.map((conv: any) => {
-        // Parse participants using utility function
-        let participantUsers = parseParticipants(conv.participants || [])
-
-        // Parse createdBy from MongoDB toString format
-        const createdByUser = typeof conv.createdBy === 'string'
-          ? parseCreatedByUser(conv.createdBy)
-          : null
+        // Participants are now properly formatted JSON objects from backend
+        // Map 'avatar' field to 'avatarUrl' for consistency
+        let participantUsers = (conv.participants || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          email: p.email,
+          avatarUrl: p.avatar || p.avatarUrl || '',
+          isOnline: p.isOnline || false
+        }))
 
         // Enrich participants for private chats using multiple sources
         if (conv.type === 'private') {
           const participantsMap = new Map<string, any>()
 
-          // 1. Start with parsed participant users (from parseParticipants)
+          // 1. Start with participant users (already mapped from backend)
           participantUsers.forEach((user: any) => {
             if (!participantsMap.has(user.id)) {
               participantsMap.set(user.id, user)
@@ -88,12 +100,7 @@ export function useConversation() {
             })
           }
 
-          // 3. Enrich with createdBy (might be current user or other user)
-          if (createdByUser && !participantsMap.has(createdByUser.id)) {
-            participantsMap.set(createdByUser.id, createdByUser)
-          }
-
-          // 4. Enrich from userCache (friends list, etc.)
+          // 3. Enrich from userCache (friends list, etc.)
           participantUsers.forEach((user: any) => {
             const cachedUser = userCache.value.get(user.id)
             if (cachedUser) {
@@ -175,7 +182,7 @@ export function useConversation() {
 
       // Map response to our format
       const adaptedConversations = response.conversations.map((conv: any) => {
-        // Use participantsInfo if available, otherwise parse participants
+        // Use participantsInfo if available, otherwise use participants directly
         let participantUsers = conv.participantsInfo
           ? conv.participantsInfo.map((p: any) => ({
               id: p.id,
@@ -184,7 +191,7 @@ export function useConversation() {
               avatarUrl: p.avatar,
               isOnline: conv.presenceInfo?.onlineUsers?.includes(p.id) || false
             }))
-          : parseParticipants(conv.participants || [])
+          : conv.participants || []
 
         console.log(`📋 Conversation ${conv.id || conv._id} participants:`, {
           originalIds: conv.participants,
@@ -329,6 +336,11 @@ export function useConversation() {
   ) => {
     const conversation = conversations.value.find(c => c._id === conversationId)
     if (conversation) {
+      console.log('📬 Updating last message for conversation:', conversationId, {
+        oldMessage: conversation.lastMessage,
+        newMessage: lastMessage
+      })
+
       conversation.lastMessage = lastMessage
       conversation.lastMessageAt = lastMessageAt || new Date()
 
@@ -339,7 +351,9 @@ export function useConversation() {
         return timeB - timeA
       })
 
-      console.log('✅ Conversation last message updated:', conversationId)
+      console.log('✅ Conversation last message updated:', conversationId, conversation.lastMessage)
+    } else {
+      console.warn('⚠️ Conversation not found:', conversationId)
     }
   }
 
