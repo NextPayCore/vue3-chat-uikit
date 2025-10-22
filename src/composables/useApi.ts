@@ -269,6 +269,39 @@ export function useApi(config?: ApiConfig) {
     return get<IConversation>(`/api/conversations/${conversationId}`)
   }
 
+  // Get detailed conversations with full participant info
+  const getDetailedConversations = async (options?: {
+    query?: string
+    page?: number
+    limit?: number
+    type?: 'private' | 'group'
+    participantId?: string
+    sortBy?: 'createdAt' | 'updatedAt' | 'name'
+    sortOrder?: 'asc' | 'desc'
+  }): Promise<{
+    conversations: IConversation[]
+    totalConversations: number
+    page: number
+    limit: number
+    totalPages: number
+    query?: string
+  }> => {
+    const params = new URLSearchParams()
+
+    if (options?.query) params.append('query', options.query)
+    if (options?.page) params.append('page', options.page.toString())
+    if (options?.limit) params.append('limit', options.limit.toString())
+    if (options?.type) params.append('type', options.type)
+    if (options?.participantId) params.append('participantId', options.participantId)
+    if (options?.sortBy) params.append('sortBy', options.sortBy)
+    if (options?.sortOrder) params.append('sortOrder', options.sortOrder)
+
+    const queryString = params.toString()
+    const url = `/api/chat/conversations/detailed${queryString ? '?' + queryString : ''}`
+
+    return get(url)
+  }
+
   // Create new conversation
   const createConversation = async (data: {
     participants: string[]
@@ -636,6 +669,7 @@ export function useApi(config?: ApiConfig) {
     // Conversation APIs
     getConversations,
     getConversationById,
+    getDetailedConversations,
     createConversation,
     updateConversation,
     deleteConversation,

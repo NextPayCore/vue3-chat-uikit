@@ -120,11 +120,13 @@ export function useAuth() {
         localStorage.removeItem('auth_token')
       }
 
+      // Show success message (non-blocking)
       ElMessage.success({
         message: `Welcome back, ${user.name}!`,
         duration: 3000
       })
 
+      // Return user immediately after saving to localStorage
       return user
     } catch (error: any) {
       console.error('Google login error:', error)

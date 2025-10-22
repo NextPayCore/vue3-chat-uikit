@@ -68,9 +68,10 @@ watch(visible, (newValue) => {
   emit('update:modelValue', newValue)
 })
 
-const handleGoogleLogin = (response: any) => {
+const handleGoogleLogin = async (response: any) => {
   try {
-    authHandleGoogleLogin(response)
+    // CRITICAL: Must await the login to complete before emitting success
+    await authHandleGoogleLogin(response)
     visible.value = false
     emit('success')
   } catch (error) {

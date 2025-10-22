@@ -164,6 +164,85 @@ export function useConversation() {
     }
   }
 
+  // Get detailed conversations with full participant info
+  const getDetailedConversations = async (options?: {
+    query?: string
+    page?: number
+    limit?: number
+    type?: 'private' | 'group'
+    sortBy?: 'createdAt' | 'updatedAt' | 'name'
+    sortOrder?: 'asc' | 'desc'
+  }) => {
+    isLoading.value = true
+    try {
+      const response = await api.getDetailedConversations(options)
+      console.log('✅ Fetched detailed conversations:', response)
+
+      // Map response to our format
+      const adaptedConversations = response.conversations.map((conv: any) => {
+        // Use participantsInfo if available, otherwise parse participants
+        let participantUsers = conv.participantsInfo
+          ? conv.participantsInfo.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              email: p.email,
+              avatarUrl: p.avatar,
+              isOnline: conv.presenceInfo?.onlineUsers?.includes(p.id) || false
+            }))
+          : parseParticipants(conv.participants || [])
+
+        console.log(`📋 Conversation ${conv.id || conv._id} participants:`, {
+          originalIds: conv.participants,
+          participantsInfo: conv.participantsInfo,
+          enrichedCount: participantUsers.length,
+          participants: participantUsers.map((p: any) => ({ id: p.id, name: p.name }))
+        })
+
+        return {
+          _id: conv.id || conv._id,
+          type: conv.type,
+          name: conv.name,
+          description: conv.description,
+          avatar: conv.avatar,
+          participants: participantUsers,
+          participantIds: conv.participants || [],
+          participantsInfo: conv.participantsInfo,
+          creatorInfo: conv.creatorInfo,
+          participantCount: conv.participantCount,
+          presenceInfo: conv.presenceInfo,
+          createdBy: conv.createdBy,
+          lastMessage: conv.lastMessage,
+          lastMessageAt: conv.lastMessageAt ? new Date(conv.lastMessageAt) : undefined,
+          unreadCount: conv.unreadCount,
+          createdAt: new Date(conv.createdAt),
+          updatedAt: new Date(conv.updatedAt),
+          metadata: {
+            isActive: conv.isActive ?? true,
+            isMuted: conv.metadata?.isMuted,
+            mutedUntil: conv.metadata?.mutedUntil,
+            isPinned: conv.metadata?.isPinned
+          }
+        } as IConversation
+      })
+
+      conversations.value = adaptedConversations
+
+      return {
+        conversations: adaptedConversations,
+        total: response.totalConversations,
+        page: response.page,
+        limit: response.limit,
+        hasMore: response.page < response.totalPages
+      } as IConversationListResponse
+    } catch (error: any) {
+      console.error('Get detailed conversations error:', error)
+      ElMessage.error(error.message || 'Failed to load conversations')
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   // Create conversation (private or group)
   const createConversation = async (request: ICreateConversationRequest) => {
     isLoading.value = true
@@ -292,6 +371,7 @@ export function useConversation() {
 
     // Methods
     getConversations,
+    getDetailedConversations,
     createConversation,
     getConversation,
     deleteConversation,

@@ -228,6 +228,7 @@ const {
   activeConversation,
   setActiveConversation,
   getConversations,
+  getDetailedConversations,
   createConversation,
   updateConversationLastMessage,
   enrichConversationsWithUserDetails
@@ -585,13 +586,11 @@ const handleLoginSuccess = async () => {
   try {
     await Promise.all([
       getFriendshipList(),
-      getConversations()
+      getConversations()  // Use detailed API with full participant info
     ])
 
-    // Enrich conversations with friends data
-    const friendsMap = new Map(friendsList.value.map((f: any) => [f.id, f]))
-    enrichConversationsWithUserDetails(friendsMap)
-    console.log('✅ Enriched conversations with friends data')
+    // No need to enrich - detailed API already provides full participant info!
+    console.log('✅ Loaded conversations with detailed participant info')
   } catch (error) {
     console.error('❌ Failed to load data after login:', error)
     ElMessage.error('Failed to load data. Please refresh the page.')
@@ -824,13 +823,10 @@ onMounted(async () => {
     try {
       await Promise.all([
         getFriendshipList(),
-        getConversations()
+        getDetailedConversations()  // Use detailed API
       ])
 
-      // Enrich conversations with friends data
-      const friendsMap = new Map(friendsList.value.map((f: any) => [f.id, f]))
-      enrichConversationsWithUserDetails(friendsMap)
-      console.log('✅ Enriched conversations with friends data on mount')
+      console.log('✅ Loaded conversations with detailed participant info on mount')
        if (USE_SOCKET) {
       console.log('🔌 Connecting to socket server:', SOCKET_URL)
       connect()

@@ -3,6 +3,19 @@ import type { IMessage } from './message.interface'
 
 export type ConversationType = 'private' | 'group'
 
+export interface IUserInfo {
+  id: string
+  name: string
+  email: string
+  avatar?: string
+}
+
+export interface IPresenceInfo {
+  onlineCount: number
+  offlineCount: number
+  onlineUsers: string[]
+}
+
 export interface IConversation {
   _id: string
   type: ConversationType
@@ -11,6 +24,12 @@ export interface IConversation {
   avatar?: string
   participants: IUser[]
   participantIds: string[]
+  // Detailed API fields
+  participantsInfo?: IUserInfo[]
+  creatorInfo?: IUserInfo
+  participantCount?: number
+  presenceInfo?: IPresenceInfo
+  // End detailed fields
   createdBy: string
   lastMessage?: IMessage
   lastMessageAt?: Date
