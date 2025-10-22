@@ -217,7 +217,10 @@ const {
 const {
   friendsList,
   totalPendingRequests,
-  getFriendshipList
+  getFriendshipList,
+  onFriendRequestReceived,
+  onFriendRequestAccepted,
+  onFriendRequestDeclined
 } = useFriendship()
 
 // Conversation
@@ -381,6 +384,7 @@ const {
   error: socketError,
   connect,
   disconnect,
+  reconnectWithNewToken,
   sendMessage: socketSendMessage,
   sendTyping,
   markAsRead,
@@ -530,6 +534,19 @@ const {
         // Reload pinned messages
         getPinnedMessages(data.conversationId)
       }
+    },
+    // Friendship socket events
+    onFriendRequestReceived: (data: any) => {
+      console.log('🤝 Friend request received (socket):', data)
+      onFriendRequestReceived(data)
+    },
+    onFriendRequestAccepted: (data: any) => {
+      console.log('✅ Friend request accepted (socket):', data)
+      onFriendRequestAccepted(data)
+    },
+    onFriendRequestDeclined: (data: any) => {
+      console.log('❌ Friend request declined (socket):', data)
+      onFriendRequestDeclined(data)
     }
   }
 )
@@ -552,21 +569,32 @@ const handleLoginSuccess = async () => {
   console.log('✅ Login successful')
   showLoginModal.value = false
 
-  // Load data
-  await Promise.all([
-    getFriendshipList(),
-    getConversations()
-  ])
+  // Get new token
+  const newToken = localStorage.getItem('accessToken')
 
-  // Enrich conversations with friends data
-  const friendsMap = new Map(friendsList.value.map((f: any) => [f.id, f]))
-  enrichConversationsWithUserDetails(friendsMap)
-  console.log('✅ Enriched conversations with friends data')
+  // Reconnect socket with new token
+  if (USE_SOCKET && newToken) {
+    console.log('🔌 Reconnecting socket with new token:', newToken.substring(0, 20) + '...')
+    reconnectWithNewToken(newToken)
 
-  // Connect socket if enabled
-  if (USE_SOCKET) {
-    console.log('🔌 Connecting to socket server:', SOCKET_URL)
-    connect()
+    // Wait for socket connection
+    await new Promise(resolve => setTimeout(resolve, 1500))
+  }
+
+  // Load data with new token
+  try {
+    await Promise.all([
+      getFriendshipList(),
+      getConversations()
+    ])
+
+    // Enrich conversations with friends data
+    const friendsMap = new Map(friendsList.value.map((f: any) => [f.id, f]))
+    enrichConversationsWithUserDetails(friendsMap)
+    console.log('✅ Enriched conversations with friends data')
+  } catch (error) {
+    console.error('❌ Failed to load data after login:', error)
+    ElMessage.error('Failed to load data. Please refresh the page.')
   }
 }
 
@@ -803,6 +831,12 @@ onMounted(async () => {
       const friendsMap = new Map(friendsList.value.map((f: any) => [f.id, f]))
       enrichConversationsWithUserDetails(friendsMap)
       console.log('✅ Enriched conversations with friends data on mount')
+       if (USE_SOCKET) {
+      console.log('🔌 Connecting to socket server:', SOCKET_URL)
+      connect()
+    } else {
+      console.log('⚠️ Socket disabled, using REST API mode')
+    }
     } catch (error) {
       console.error('Failed to load data:', error)
       // If authentication fails, show login modal
@@ -811,12 +845,7 @@ onMounted(async () => {
       }
     }
 
-    if (USE_SOCKET) {
-      console.log('🔌 Connecting to socket server:', SOCKET_URL)
-      connect()
-    } else {
-      console.log('⚠️ Socket disabled, using REST API mode')
-    }
+
   }
 })
 

@@ -8,6 +8,7 @@ import type {
   IPinnedMessageReorderedEvent,
   IConversationPinnedMessages
 } from '../interfaces/pin.interface'
+import type { IFriendshipNotification } from '../interfaces/friendship.interface'
 import { normalizeSocketMessage, normalizeSocketConversation } from '../utils/socketMessageParser'
 
 interface SocketConfig {
@@ -39,6 +40,10 @@ interface SocketEvents {
   onMessageUnpinned?: (data: IMessageUnpinnedEvent) => void
   onPinnedMessageReordered?: (data: IPinnedMessageReorderedEvent) => void
   onPinnedMessagesResponse?: (data: IConversationPinnedMessages) => void
+  // Friendship events
+  onFriendRequestReceived?: (data: IFriendshipNotification) => void
+  onFriendRequestAccepted?: (data: IFriendshipNotification) => void
+  onFriendRequestDeclined?: (data: IFriendshipNotification) => void
   currentUserId?: string // Add current user ID for message normalization
 }
 
@@ -57,17 +62,29 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
 
     isConnecting.value = true
     error.value = null
-    console.log('Connecting to socket server...', config.options)
+
+    // Get fresh token from localStorage every time we connect
+    const currentToken = localStorage.getItem('accessToken') || localStorage.getItem('auth_token') || ''
+    console.log('🔌 Connecting with fresh token:', currentToken ? currentToken.substring(0, 20) + '...' : 'No token')
+
+    // Update auth config with fresh token
+    const socketConfig = {
+      autoConnect: false,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
+      timeout: 10000,
+      transports: ['websocket'],
+      ...config.options,
+      auth: {
+        ...config.options?.auth,
+        token: currentToken  // Override with fresh token
+      }
+    }
+
+    console.log('Connecting to socket server...', socketConfig)
     try {
-      socket.value = io(config.url, {
-        autoConnect: false,
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
-        timeout: 10000,
-        transports: ['websocket'],
-        ...config.options,
-      })
+      socket.value = io(config.url, socketConfig)
 
       // Setup event listeners
       setupSocketListeners()
@@ -88,6 +105,23 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
       socket.value = null
       isConnected.value = false
     }
+  }
+
+  // Reconnect with updated auth token
+  const reconnectWithNewToken = (newToken: string) => {
+    console.log('🔄 Reconnecting socket with new token...')
+
+    // Save token to localStorage first
+    localStorage.setItem('accessToken', newToken)
+    localStorage.setItem('auth_token', newToken)
+
+    // Disconnect existing connection
+    disconnect()
+
+    // Reconnect (will automatically pick up new token from localStorage)
+    setTimeout(() => {
+      connect()
+    }, 500) // Small delay for clean reconnection
   }
 
   // Setup socket event listeners
@@ -218,6 +252,22 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
     socket.value.on('pinned_messages_response', (data: IConversationPinnedMessages) => {
       console.log('📌 Received pinned_messages_response:', data)
       events?.onPinnedMessagesResponse?.(data)
+    })
+
+    // Friendship events
+    socket.value.on('friend_request_received', (data: IFriendshipNotification) => {
+      console.log('🤝 Received friend_request_received event:', data)
+      events?.onFriendRequestReceived?.(data)
+    })
+
+    socket.value.on('friend_request_accepted', (data: IFriendshipNotification) => {
+      console.log('✅ Received friend_request_accepted event:', data)
+      events?.onFriendRequestAccepted?.(data)
+    })
+
+    socket.value.on('friend_request_declined', (data: IFriendshipNotification) => {
+      console.log('❌ Received friend_request_declined event:', data)
+      events?.onFriendRequestDeclined?.(data)
     })
   }
 
@@ -367,6 +417,7 @@ export function useSocket(config: SocketConfig, events?: SocketEvents) {
     error,
     connect,
     disconnect,
+    reconnectWithNewToken,
     sendMessage,
     sendTyping,
     markAsRead,

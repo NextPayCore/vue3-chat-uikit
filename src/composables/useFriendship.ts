@@ -8,6 +8,7 @@ import type {
   IFriendshipListSimple,
   ISuggestedFriend,
   IFriendshipCheckResponse,
+  IFriendshipNotification,
   FriendshipStatus
 } from '../interfaces/friendship.interface'
 
@@ -18,9 +19,97 @@ const sentRequests = ref<IFriendship[]>([])
 const blockedUsers = ref<IFriendUser[]>([])
 const suggestedFriends = ref<ISuggestedFriend[]>([])
 const isLoading = ref(false)
+const latestNotification = ref<IFriendshipNotification | null>(null)
 
 export function useFriendship() {
   const api = useApi()
+
+  // Handler for friend request received event
+  const onFriendRequestReceived = (data: IFriendshipNotification) => {
+    console.log('🔔 Friend request received:', data)
+
+    latestNotification.value = data
+
+    // Add to pending requests
+    const newRequest: IFriendship = {
+      _id: data.friendshipId,
+      requesterId: data.requester.id,
+      addresseeId: data.addressee.id,
+      status: 'pending',
+      message: data.message,
+      createdAt: data.createdAt,
+      updatedAt: data.createdAt
+    }
+
+    pendingRequests.value.unshift(newRequest)
+
+    // Show notification
+    ElMessage({
+      message: `${data.requester.name} sent you a friend request${data.message ? ': ' + data.message : ''}`,
+      type: 'info',
+      duration: 5000,
+      showClose: true
+    })
+
+    // Optionally refresh full list
+    getFriendshipList()
+  }
+
+  // Handler for friend request accepted event
+  const onFriendRequestAccepted = (data: IFriendshipNotification) => {
+    console.log('✅ Friend request accepted:', data)
+
+    latestNotification.value = data
+
+    // Remove from pending and add to friends
+    pendingRequests.value = pendingRequests.value.filter(
+      req => req._id !== data.friendshipId
+    )
+
+    // Add to friends list
+    const newFriend: IFriendUser = {
+      id: data.addressee.id,
+      name: data.addressee.name,
+      email: data.addressee.email,
+      avatar: data.addressee.avatar,
+      avatarUrl: data.addressee.avatar,
+      isOnline: false,
+      friendshipId: data.friendshipId
+    }
+
+    friendsList.value.unshift(newFriend)
+
+    // Show success notification
+    ElMessage({
+      message: `${data.addressee.name} accepted your friend request!`,
+      type: 'success',
+      duration: 5000,
+      showClose: true
+    })
+
+    // Refresh full list
+    getFriendshipList()
+  }
+
+  // Handler for friend request declined event
+  const onFriendRequestDeclined = (data: IFriendshipNotification) => {
+    console.log('❌ Friend request declined:', data)
+
+    latestNotification.value = data
+
+    // Remove from pending requests
+    pendingRequests.value = pendingRequests.value.filter(
+      req => req._id !== data.friendshipId
+    )
+
+    // Show notification
+    ElMessage({
+      message: `${data.addressee.name} declined your friend request`,
+      type: 'warning',
+      duration: 5000,
+      showClose: true
+    })
+  }
 
   // Helper: Extract user info from serialized string
   const extractUserFromString = (serializedUser: string): Partial<IFriendUser> => {
@@ -371,6 +460,7 @@ export function useFriendship() {
     blockedUsers,
     suggestedFriends,
     isLoading,
+    latestNotification,
 
     // Computed
     totalFriends,
@@ -387,6 +477,11 @@ export function useFriendship() {
     unblockUser,
     removeFriend,
     checkFriendship,
-    getSuggestedFriends
+    getSuggestedFriends,
+
+    // Socket event handlers
+    onFriendRequestReceived,
+    onFriendRequestAccepted,
+    onFriendRequestDeclined
   }
 }

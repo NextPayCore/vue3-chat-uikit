@@ -55,6 +55,11 @@ export enum SocketEventEnum {
   VOICE_UPLOAD_COMPLETE = 'voice:upload:complete',
   VOICE_UPLOAD_ERROR = 'voice:upload:error',
 
+  // Friendship events
+  FRIEND_REQUEST_RECEIVED = 'friend_request_received',
+  FRIEND_REQUEST_ACCEPTED = 'friend_request_accepted',
+  FRIEND_REQUEST_DECLINED = 'friend_request_declined',
+
   // Error events
   ERROR = 'error',
 }

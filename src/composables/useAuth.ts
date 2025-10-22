@@ -105,13 +105,19 @@ export function useAuth() {
       // Save to localStorage
       localStorage.setItem('user', JSON.stringify(user))
 
+      // Also save as auth_user for compatibility with other composables
+      localStorage.setItem('auth_user', JSON.stringify(user))
+
       // Only save token if it exists and is not empty
       if (user.token && user.token.trim()) {
         localStorage.setItem('accessToken', user.token)
-        console.log('✅ Token saved to localStorage')
+        // Also save as auth_token for compatibility
+        localStorage.setItem('auth_token', user.token)
+        console.log('✅ Token saved to localStorage:', user.token.substring(0, 20) + '...')
       } else {
         console.warn('⚠️ No token received from backend, removing any existing token')
         localStorage.removeItem('accessToken')
+        localStorage.removeItem('auth_token')
       }
 
       ElMessage.success({
@@ -154,6 +160,8 @@ export function useAuth() {
     currentUser.value = null
     localStorage.removeItem('user')
     localStorage.removeItem('accessToken')
+    localStorage.removeItem('auth_user')
+    localStorage.removeItem('auth_token')
 
     ElMessage.success({
       message: 'Successfully signed out',

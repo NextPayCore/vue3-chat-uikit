@@ -57,3 +57,29 @@ export interface IFriendshipCheckResponse {
   isBlocked: boolean
   blockedBy?: 'requester' | 'addressee'
 }
+
+// Realtime notification types
+export type FriendshipNotificationType =
+  | 'friend_request_received'
+  | 'friend_request_accepted'
+  | 'friend_request_declined'
+
+export interface IFriendshipNotification {
+  friendshipId: string
+  requester: {
+    id: string
+    name: string
+    email: string
+    avatar?: string
+  }
+  addressee: {
+    id: string
+    name: string
+    email: string
+    avatar?: string
+  }
+  message?: string
+  status: FriendshipStatus
+  createdAt: Date
+  notificationType: FriendshipNotificationType
+}
